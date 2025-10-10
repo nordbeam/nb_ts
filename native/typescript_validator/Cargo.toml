@@ -1,0 +1,15 @@
+[package]
+name = "typescript_validator"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "typescript_validator"
+crate-type = ["cdylib"]
+
+[dependencies]
+rustler = "0.37"
+oxc_allocator = "0.94"
+oxc_parser = "0.94"
+oxc_semantic = "0.94"
+oxc_span = "0.94"

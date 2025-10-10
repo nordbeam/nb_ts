@@ -1,0 +1,108 @@
+name: Build precompiled NIFs
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build_release:
+    name: NIF ${{ matrix.nif }} - ${{ matrix.job.target }} (${{ matrix.job.os }})
+    runs-on: ${{ matrix.job.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        nif: ["2.16", "2.17"]
+        job:
+          # Linux
+          - { target: aarch64-unknown-linux-gnu,     os: ubuntu-22.04,   use-cross: true }
+          - { target: aarch64-unknown-linux-musl,    os: ubuntu-22.04,   use-cross: true }
+          - { target: x86_64-unknown-linux-gnu,      os: ubuntu-22.04 }
+          - { target: x86_64-unknown-linux-musl,     os: ubuntu-22.04,   use-cross: true }
+
+          # macOS
+          - { target: aarch64-apple-darwin,          os: macos-14 }
+          - { target: x86_64-apple-darwin,           os: macos-13 }
+
+          # Windows
+          - { target: x86_64-pc-windows-gnu,         os: windows-2022 }
+          - { target: x86_64-pc-windows-msvc,        os: windows-2022 }
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Elixir
+      uses: erlef/setup-beam@v1
+      with:
+        otp-version: '27'
+        elixir-version: '1.17'
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        target: ${{ matrix.job.target }}
+
+    - name: Install cross
+      if: ${{ matrix.job.use-cross }}
+      run: cargo install cross --git https://github.com/cross-rs/cross
+
+    - name: Build the NIF
+      id: build-nif
+      env:
+        RUSTLER_NIF_VERSION: ${{ matrix.nif }}
+      run: |
+        if [ -n "${{ matrix.job.use-cross }}" ]; then
+          cross build --release --target=${{ matrix.job.target }}
+        else
+          cargo build --release --target=${{ matrix.job.target }}
+        fi
+      working-directory: native/typescript_validator
+      shell: bash
+
+    - name: Package NIF
+      id: package-nif
+      run: |
+        mkdir -p artifacts
+        if [[ "${{ matrix.job.target }}" == *"windows"* ]]; then
+          cp native/typescript_validator/target/${{ matrix.job.target }}/release/libtypescript_validator.dll artifacts/
+        elif [[ "${{ matrix.job.target }}" == *"darwin"* ]]; then
+          cp native/typescript_validator/target/${{ matrix.job.target }}/release/libtypescript_validator.dylib artifacts/
+        else
+          cp native/typescript_validator/target/${{ matrix.job.target }}/release/libtypescript_validator.so artifacts/
+        fi
+
+        # Create tarball
+        cd artifacts
+        tar -czf ../nb_ts-nif-${{ matrix.nif }}-${{ matrix.job.target }}.tar.gz *
+      shell: bash
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: nb_ts-${{ matrix.job.target }}-nif-${{ matrix.nif }}
+        path: nb_ts-nif-${{ matrix.nif }}-${{ matrix.job.target }}.tar.gz
+
+  release:
+    name: Create Release
+    needs: build_release
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Display structure of downloaded files
+      run: ls -R artifacts
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: artifacts/**/*.tar.gz
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
