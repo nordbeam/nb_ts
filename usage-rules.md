@@ -99,22 +99,7 @@ mix nb_ts.gen.types --verbose               # Detailed output
 - `--validate` - Validate generated TypeScript with oxc parser
 - `--verbose` - Show detailed generation output
 
-### 3. Automatic Type Generation (Optional)
-
-Add `NbTs.Watcher` to your supervision tree for automatic regeneration on file changes:
-
-```elixir
-# lib/my_app/application.ex
-def start(_type, _args) do
-  children = [
-    # ... other children
-    {NbTs.Watcher, output_dir: "assets/js/types"}
-  ]
-  # ...
-end
-```
-
-### 4. Use in TypeScript/React
+### 3. Use in TypeScript/React
 
 ```typescript
 import type { User, UsersIndexProps } from './types';
@@ -179,7 +164,7 @@ prop :user_subset, type: ~TS"Pick<User, 'id' | 'name'>"
 2. **Run type generation after schema changes** - Keep TypeScript in sync with Elixir
 3. **Enable `--validate` in CI** - Catch TypeScript errors before deployment
 4. **Commit generated types** - Ensures frontend devs always have latest types
-5. **Use `NbTs.Watcher` in development** - Automatic type regeneration on file changes
+5. **Run `mix ts.gen` after prop changes** - Manual type generation after modifying controllers or serializers
 6. **Prefer utility types** - Use `Record<K, V>` over `{ [key: K]: V }` for readability
 
 ## Troubleshooting
@@ -211,14 +196,3 @@ mix deps.compile
 2. Check serializers use `NbSerializer.Serializer`
 3. Check pages use `NbInertia.Controller` with `inertia_page`
 4. Use `--verbose` flag to see what's being processed
-
-### Watcher Not Working
-**Problem:** Types don't regenerate automatically
-
-**Solution:** Verify `NbTs.Watcher` is in supervision tree and receiving file system events:
-```elixir
-# lib/my_app/application.ex
-children = [
-  {NbTs.Watcher, output_dir: "assets/js/types"}
-]
-```

@@ -23,8 +23,7 @@ mix nb_inertia.install --typescript
 This handles complete setup:
 - Adds `nb_ts` dependency
 - Creates TypeScript output directory (`assets/js/types`)
-- Configures `NbTs.Watcher` for automatic type generation on file changes
-- Adds `mix ts.gen` alias
+- Adds `mix ts.gen` alias for manual type generation
 - Creates example TypeScript files
 
 ### Manual Installation
@@ -45,24 +44,7 @@ Then run:
 mix deps.get
 ```
 
-#### Optional: Automatic Type Generation
-
-For automatic type generation on file changes, add `NbTs.Watcher` to your supervision tree:
-
-```elixir
-# lib/my_app/application.ex
-def start(_type, _args) do
-  children = [
-    # ... other children
-    {NbTs.Watcher, output_dir: "assets/js/types"}
-  ]
-
-  opts = [strategy: :one_for_one, name: MyApp.Supervisor]
-  Supervisor.start_link(children, opts)
-end
-```
-
-#### Optional: Mix Alias
+#### Mix Alias
 
 Add a convenient alias for manual type generation:
 
@@ -80,6 +62,16 @@ Create the output directory:
 ```bash
 mkdir -p assets/js/types
 ```
+
+#### Generating Types
+
+Run the type generator after making changes to your Inertia pages or NbSerializer serializers:
+
+```bash
+mix ts.gen
+```
+
+**Note:** Type generation is currently manual. After modifying controller props or serializer fields, you need to run `mix ts.gen` to update the TypeScript definitions.
 
 ## Usage
 
@@ -216,14 +208,20 @@ assets/js/types/
 └── AuthSharedProps.ts    # From SharedProps modules
 ```
 
-## Automatic Type Generation
+## Manual Type Generation Workflow
 
-If you configured `NbTs.Watcher`, types are regenerated automatically when:
+After modifying your Elixir code, regenerate TypeScript types by running:
+
+```bash
+mix ts.gen
+```
+
+This command generates types when:
 - Serializers are modified
 - Inertia page definitions change
 - SharedProps modules are updated
 
-This keeps your TypeScript types in sync with your Elixir code during development.
+**Important:** Type generation is manual. You need to run `mix ts.gen` after making changes to keep your TypeScript types in sync with your Elixir code.
 
 ## How It Works
 
