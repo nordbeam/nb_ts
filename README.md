@@ -1,52 +1,35 @@
 # NbTs
 
-TypeScript type generation and validation for Elixir.
+TypeScript type generation and validation for Elixir applications.
 
 ## Features
 
-- **~TS Sigil**: Compile-time TypeScript type validation
+- **~TS Sigil**: Compile-time TypeScript type validation using the oxc parser
 - **Type Generation**: Generate TypeScript interfaces from NbSerializer serializers
-- **Inertia Integration**: Generate page props types for Inertia.js applications
+- **Inertia Integration**: Generate type-safe page props for Inertia.js applications
 - **Fast Validation**: Uses oxc parser (Oxidation Compiler) via Rustler NIF
+- **Zero Config**: Precompiled binaries - no Rust toolchain required
 
 ## Installation
 
-### Automatic Installation (Recommended)
+### Quick Start (Recommended for Inertia Projects)
 
-The easiest way to install NbTs is using the installer task with Igniter:
+If you're using [NbInertia](https://github.com/nordbeam/nb_inertia), NbTs is automatically installed and configured:
 
 ```bash
-mix nb_ts.install
+mix nb_inertia.install --typescript
 ```
 
-This will:
-- Add `nb_ts` to your dependencies
-- Create the TypeScript output directory
-- Create or update `tsconfig.json`
-- Add a `mix ts.gen` alias for type generation
-- Create an example file showing ~TS sigil usage
-- Run initial type generation
-
-Options:
-- `--output-dir` - Where to generate types (default: `assets/js/types`)
-- `--watch-mode` - Set up file watcher for auto-generation
-- `--yes` - Skip confirmations
-
-Examples:
-```bash
-# Basic installation
-mix nb_ts.install
-
-# Install with custom output directory
-mix nb_ts.install --output-dir assets/types
-
-# Install with file watcher for auto-generation
-mix nb_ts.install --watch-mode
-```
+This handles complete setup:
+- Adds `nb_ts` dependency
+- Creates TypeScript output directory (`assets/js/types`)
+- Configures `NbTs.Watcher` for automatic type generation on file changes
+- Adds `mix ts.gen` alias
+- Creates example TypeScript files
 
 ### Manual Installation
 
-Add `nb_ts` to your list of dependencies in `mix.exs`:
+Add `nb_ts` to your `mix.exs` dependencies:
 
 ```elixir
 def deps do
@@ -56,14 +39,35 @@ def deps do
 end
 ```
 
-Then create the output directory and add a mix alias:
+Then run:
 
 ```bash
-mkdir -p assets/js/types
+mix deps.get
 ```
 
+#### Optional: Automatic Type Generation
+
+For automatic type generation on file changes, add `NbTs.Watcher` to your supervision tree:
+
 ```elixir
-# In mix.exs
+# lib/my_app/application.ex
+def start(_type, _args) do
+  children = [
+    # ... other children
+    {NbTs.Watcher, output_dir: "assets/js/types"}
+  ]
+
+  opts = [strategy: :one_for_one, name: MyApp.Supervisor]
+  Supervisor.start_link(children, opts)
+end
+```
+
+#### Optional: Mix Alias
+
+Add a convenient alias for manual type generation:
+
+```elixir
+# mix.exs
 defp aliases do
   [
     "ts.gen": ["nb_ts.gen.types"]
@@ -71,40 +75,68 @@ defp aliases do
 end
 ```
 
+Create the output directory:
+
+```bash
+mkdir -p assets/js/types
+```
+
 ## Usage
 
 ### The ~TS Sigil
 
-Import the sigil and use it to validate TypeScript types at compile time:
+Import the sigil to validate TypeScript types at compile time:
 
 ```elixir
 import NbTs.Sigil
+```
 
-# In NbSerializer serializers
+#### In NbSerializer Serializers
+
+```elixir
 defmodule MyApp.UserSerializer do
   use NbSerializer.Serializer
 
   field :id, :number
+  field :name, :string
   field :metadata, :typescript, type: ~TS"{ [key: string]: any }"
   field :status, :typescript, type: ~TS"'active' | 'inactive' | 'pending'"
+  field :settings, :typescript, type: ~TS"Record<string, unknown>"
 end
+```
 
-# In Inertia pages
+#### In Inertia Pages
+
+```elixir
 defmodule MyAppWeb.UserController do
-  use NbSerializer.Inertia.Controller
+  use MyAppWeb, :controller
+  use NbInertia.Controller
+  import NbTs.Sigil
 
   inertia_page :index do
-    prop :users, type: ~TS"Array<User>", array: true
+    prop :users, type: ~TS"Array<User>"
     prop :filters, type: ~TS"{ search?: string; status?: string }"
+    prop :pagination, type: ~TS"{ page: number; total: number }"
+  end
+
+  def index(conn, params) do
+    # Your controller logic
+    render_inertia(conn, :index, users: users, filters: filters, pagination: pagination)
   end
 end
 ```
 
-Invalid TypeScript syntax will cause a compilation error:
+#### Compile-Time Validation
+
+Invalid TypeScript syntax causes compilation errors:
 
 ```elixir
 # This will fail to compile:
 field :bad, :typescript, type: ~TS"{ invalid syntax"
+
+# Error message:
+# ** (CompileError) Invalid TypeScript syntax in ~TS sigil
+# Error: Expected '}' but found end of file
 ```
 
 ### Generating TypeScript Interfaces
@@ -115,48 +147,108 @@ Generate TypeScript interfaces from your serializers and Inertia pages:
 mix nb_ts.gen.types
 ```
 
-Options:
-- `--output-dir` - Output directory (default: `assets/js/types`)
-- `--validate` - Validate generated TypeScript files
-- `--verbose` - Show detailed output
+Or, if you configured the alias:
 
-Example:
 ```bash
-mix nb_ts.gen.types --output-dir assets/types --validate
+mix ts.gen
 ```
 
-This will generate TypeScript interface files for:
-- All NbSerializer serializers in your application
-- All Inertia page props
-- All SharedProps modules
+#### Options
+
+- `--output-dir DIR` - Output directory (default: `assets/js/types`)
+- `--validate` - Validate generated TypeScript using oxc parser
+- `--verbose` - Show detailed output
+
+#### Examples
+
+```bash
+# Basic generation
+mix nb_ts.gen.types
+
+# Custom output directory with validation
+mix nb_ts.gen.types --output-dir assets/types --validate
+
+# Verbose mode
+mix nb_ts.gen.types --verbose
+```
+
+#### What Gets Generated
+
+NbTs generates TypeScript files for:
+
+1. **NbSerializer Serializers** - All serializers in your application
+2. **Inertia Page Props** - Props defined with `inertia_page`
+3. **Shared Props** - Props defined with `inertia_shared` or `NbInertia.SharedProps`
+4. **Index File** - Central `index.ts` that exports all types
 
 ### Using Generated Types in TypeScript
 
-Import the generated types in your TypeScript/React code:
+Import and use the generated types in your React/TypeScript components:
 
 ```typescript
 import type { User, UsersIndexProps } from './types';
 
-export default function UsersIndex({ users, filters }: UsersIndexProps) {
-  // TypeScript knows the shape of your props!
+export default function UsersIndex({ users, filters, pagination }: UsersIndexProps) {
+  // TypeScript knows the exact shape of your props!
   return (
     <div>
+      <h1>Users ({pagination.total})</h1>
       {users.map((user: User) => (
-        <div key={user.id}>{user.name}</div>
+        <div key={user.id}>
+          {user.name} - {user.status}
+        </div>
       ))}
     </div>
   );
 }
 ```
 
+## Generated Files Structure
+
+After running type generation, you'll have:
+
+```
+assets/js/types/
+├── index.ts              # Central export file
+├── User.ts               # From UserSerializer
+├── Post.ts               # From PostSerializer
+├── UsersIndexProps.ts    # From inertia_page :users_index
+└── AuthSharedProps.ts    # From SharedProps modules
+```
+
+## Automatic Type Generation
+
+If you configured `NbTs.Watcher`, types are regenerated automatically when:
+- Serializers are modified
+- Inertia page definitions change
+- SharedProps modules are updated
+
+This keeps your TypeScript types in sync with your Elixir code during development.
+
 ## How It Works
 
-NbTs uses the [oxc parser](https://oxc-project.github.io/) (Oxidation Compiler) via Rustler NIF for fast, accurate TypeScript validation. Precompiled binaries are automatically downloaded - no Rust toolchain required.
+NbTs uses the [oxc parser](https://oxc-project.github.io/) (Oxidation Compiler) via Rustler NIF for fast, accurate TypeScript validation.
+
+**Key Benefits:**
+- **Zero Setup**: Precompiled binaries automatically downloaded
+- **No Rust Toolchain**: Works out of the box on all platforms
+- **Fast**: Native-speed validation via NIF
+- **Accurate**: Same parser used by modern JavaScript tooling
+
+## Related Projects
+
+- **[NbSerializer](https://github.com/nordbeam/nb_serializer)** - High-performance JSON serialization for Elixir
+- **[NbInertia](https://github.com/nordbeam/nb_inertia)** - Advanced Inertia.js integration for Phoenix
+- **[NbVite](https://github.com/nordbeam/nb_vite)** - Vite integration for Phoenix
+
+## Documentation
+
+Full documentation is available on [HexDocs](https://hexdocs.pm/nb_ts).
 
 ## License
 
-MIT
+MIT License. See [LICENSE](LICENSE) for details.
 
 ## Credits
 
-Extracted from [NbSerializer](https://github.com/nordbeam/nb_serializer) to provide standalone TypeScript tooling for Elixir applications.
+Built by [Nordbeam](https://github.com/nordbeam). Extracted from [NbSerializer](https://github.com/nordbeam/nb_serializer) to provide standalone TypeScript tooling for Elixir applications.

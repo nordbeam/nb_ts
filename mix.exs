@@ -35,9 +35,8 @@ defmodule NbTs.MixProject do
       {:rustler, "~> 0.37", runtime: false},
       {:rustler_precompiled, "~> 0.8"},
 
-      # Optional dependencies
-      {:file_system, "~> 1.0", optional: true},
-      {:igniter, "~> 0.5", only: [:dev], runtime: false, optional: true},
+      # Required for NbTs.Watcher
+      {:file_system, "~> 1.0"},
 
       # Development dependencies
       {:ex_doc, "~> 0.31", only: :dev, runtime: false}
