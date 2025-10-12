@@ -19,7 +19,7 @@ if Code.ensure_loaded?(Igniter) do
     ## Options
 
         --output-dir   Where to generate TypeScript types (default: "assets/js/types")
-        --watch        Set up file watcher for automatic type generation
+        --watch-mode   Set up file watcher for automatic type generation
         --yes          Skip confirmations
 
     ## Examples
@@ -31,7 +31,7 @@ if Code.ensure_loaded?(Igniter) do
         mix nb_ts.install --output-dir assets/types
 
         # Install with file watcher for auto-generation
-        mix nb_ts.install --watch
+        mix nb_ts.install --watch-mode
 
         # Install without confirmations
         mix nb_ts.install --yes
@@ -46,7 +46,7 @@ if Code.ensure_loaded?(Igniter) do
       %Igniter.Mix.Task.Info{
         schema: [
           output_dir: :string,
-          watch: :boolean,
+          watch_mode: :boolean,
           yes: :boolean
         ],
         defaults: [
@@ -138,7 +138,7 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     defp maybe_setup_watcher(igniter, output_dir) do
-      if igniter.args.options[:watch] do
+      if igniter.args.options[:watch_mode] do
         setup_file_watcher(igniter, output_dir)
       else
         igniter
@@ -345,7 +345,7 @@ if Code.ensure_loaded?(Igniter) do
     end
 
     defp print_usage_instructions(igniter, output_dir) do
-      watch_status = if igniter.args.options[:watch], do: "enabled", else: "not enabled"
+      watch_status = if igniter.args.options[:watch_mode], do: "enabled", else: "not enabled"
 
       Igniter.add_notice(igniter, """
       NbTs has been successfully installed!
@@ -384,12 +384,12 @@ if Code.ensure_loaded?(Igniter) do
       - NbTs: https://hexdocs.pm/nb_ts
       - NbSerializer: https://hexdocs.pm/nb_serializer
 
-      #{if !igniter.args.options[:watch] do
+      #{if !igniter.args.options[:watch_mode] do
         """
 
-        Tip: Run with --watch to automatically regenerate types when serializers change:
+        Tip: Run with --watch-mode to automatically regenerate types when serializers change:
 
-          mix nb_ts.install --watch
+          mix nb_ts.install --watch-mode
         """
       else
         ""

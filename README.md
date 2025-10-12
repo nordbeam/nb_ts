@@ -29,7 +29,7 @@ This will:
 
 Options:
 - `--output-dir` - Where to generate types (default: `assets/js/types`)
-- `--watch` - Set up file watcher for auto-generation
+- `--watch-mode` - Set up file watcher for auto-generation
 - `--yes` - Skip confirmations
 
 Examples:
@@ -41,7 +41,7 @@ mix nb_ts.install
 mix nb_ts.install --output-dir assets/types
 
 # Install with file watcher for auto-generation
-mix nb_ts.install --watch
+mix nb_ts.install --watch-mode
 ```
 
 ### Manual Installation
