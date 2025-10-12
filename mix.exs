@@ -2,7 +2,7 @@ defmodule NbTs.MixProject do
   use Mix.Project
 
   @version "0.1.0"
-  @source_url "https://github.com/assim-fayas/nb_ts"
+  @source_url "https://github.com/nordbeam/nb_ts"
 
   def project do
     [
@@ -59,7 +59,7 @@ defmodule NbTs.MixProject do
         "GitHub" => @source_url,
         "Documentation" => "https://hexdocs.pm/nb_ts"
       },
-      maintainers: ["assim"],
+      maintainers: ["nordbeam"],
       files: ~w(lib native .formatter.exs mix.exs README.md LICENSE CHANGELOG.md checksum-*.exs)
     ]
   end
