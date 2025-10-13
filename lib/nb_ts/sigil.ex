@@ -70,8 +70,10 @@ defmodule NbTs.Sigil do
     # Validate at compile time
     case NbTs.Validator.validate(string) do
       {:ok, _validated} ->
-        # Return the original string unchanged
-        {:<<>>, meta, [string]}
+        # Return a tagged tuple so the DSL can detect validated TypeScript types
+        quote do
+          {:typescript_validated, unquote({:<<>>, meta, [string]})}
+        end
 
       {:error, reason} ->
         # Raise compile error with helpful context
