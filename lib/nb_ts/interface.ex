@@ -126,7 +126,7 @@ defmodule NbTs.Interface do
   end
 
   defp apply_modifiers(base_type, type_info) do
-    type = if type_info[:array], do: "Array<#{base_type}>", else: base_type
+    type = if type_info[:list], do: "Array<#{base_type}>", else: base_type
     if type_info[:nullable], do: "#{type} | null", else: type
   end
 
@@ -467,9 +467,9 @@ defmodule NbTs.Interface do
           {"any", []}
       end
 
-    # Handle array types
-    array = Keyword.get(opts, :array, false)
-    ts_type = if array, do: "#{ts_type}[]", else: ts_type
+    # Handle list types
+    list = Keyword.get(opts, :list, false)
+    ts_type = if list, do: "#{ts_type}[]", else: ts_type
 
     # Apply nullable modifier if needed
     ts_type = if nullable, do: "#{ts_type} | null", else: ts_type

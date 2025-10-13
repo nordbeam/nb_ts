@@ -55,7 +55,7 @@ defmodule NbTs.TypeMapper do
   def normalize_type_opts(opts) when is_list(opts) do
     type = Keyword.get(opts, :type)
     enum = Keyword.get(opts, :enum)
-    array = Keyword.get(opts, :array, false)
+    list = Keyword.get(opts, :list, false)
     nullable = Keyword.get(opts, :nullable, false)
     optional = Keyword.get(opts, :optional, false)
     polymorphic = Keyword.get(opts, :polymorphic)
@@ -65,7 +65,7 @@ defmodule NbTs.TypeMapper do
     %{
       type: type,
       enum: enum,
-      array: array,
+      list: list,
       nullable: nullable,
       optional: optional,
       polymorphic: polymorphic,
@@ -75,10 +75,10 @@ defmodule NbTs.TypeMapper do
   end
 
   @doc """
-  Applies array and nullable modifiers to a base type.
+  Applies list and nullable modifiers to a base type.
   """
   def apply_modifiers(base_type, type_info) do
-    type = if Map.get(type_info, :array), do: "Array<#{base_type}>", else: base_type
+    type = if Map.get(type_info, :list), do: "Array<#{base_type}>", else: base_type
     if Map.get(type_info, :nullable), do: "#{type} | null", else: type
   end
 end
