@@ -3,7 +3,8 @@ defmodule NbTs.CompileHooks do
   Compile-time hooks for automatic TypeScript type regeneration.
 
   This module provides after-compile hooks that automatically regenerate
-  TypeScript types when NbSerializer modules are recompiled during development.
+  TypeScript types when NbSerializer or NbInertia.Controller modules are
+  recompiled during development.
 
   ## Usage
 
@@ -11,6 +12,19 @@ defmodule NbTs.CompileHooks do
 
       defmodule MyApp.UserSerializer do
         use NbSerializer.Serializer
+
+        # TypeScript types will be automatically regenerated after compilation
+        # if nb_ts is available (optional dependency)
+      end
+
+  In your controller module:
+
+      defmodule MyAppWeb.UserController do
+        use NbInertia.Controller
+
+        inertia_page :index do
+          prop :users, type: ~TS"Array<User>"
+        end
 
         # TypeScript types will be automatically regenerated after compilation
         # if nb_ts is available (optional dependency)
@@ -27,7 +41,7 @@ defmodule NbTs.CompileHooks do
 
   ## How it works
 
-  When a serializer module is compiled:
+  When a serializer or controller module is compiled:
   1. This hook is called via `@after_compile`
   2. It checks if auto-generation is enabled
   3. It incrementally regenerates only the types for the changed module
@@ -40,9 +54,9 @@ defmodule NbTs.CompileHooks do
   require Logger
 
   @doc """
-  After-compile callback for NbSerializer modules.
+  After-compile callback for NbSerializer and NbInertia.Controller modules.
 
-  This is called automatically after a serializer module is compiled.
+  This is called automatically after a serializer or controller module is compiled.
   It triggers incremental TypeScript type generation for the compiled module.
 
   ## Parameters
@@ -57,15 +71,20 @@ defmodule NbTs.CompileHooks do
   def __after_compile__(env, _bytecode) do
     module = env.module
 
-    # Only regenerate if this is a serializer module
-    if is_serializer_module?(module) do
-      # Check if auto-generation is enabled (default: true in dev, false in prod)
-      if auto_generate_enabled?() do
-        # Run regeneration asynchronously to not block compilation
-        Task.start(fn ->
-          regenerate_types_for_module(module)
-        end)
-      end
+    # Check if this is a serializer or controller module
+    cond do
+      is_serializer_module?(module) ->
+        if auto_generate_enabled?() do
+          Task.start(fn -> regenerate_types_for_module(module, :serializer) end)
+        end
+
+      is_controller_module?(module) ->
+        if auto_generate_enabled?() do
+          Task.start(fn -> regenerate_types_for_module(module, :controller) end)
+        end
+
+      true ->
+        :ok
     end
 
     :ok
@@ -76,6 +95,12 @@ defmodule NbTs.CompileHooks do
     Code.ensure_loaded?(module) and
       function_exported?(module, :__nb_serializer_serialize__, 2) and
       function_exported?(module, :__nb_serializer_type_metadata__, 0)
+  end
+
+  # Check if the module is a controller module
+  defp is_controller_module?(module) do
+    Code.ensure_loaded?(module) and
+      function_exported?(module, :inertia_page_config, 1)
   end
 
   # Check if auto-generation is enabled
@@ -92,16 +117,18 @@ defmodule NbTs.CompileHooks do
   end
 
   # Regenerate types for a specific module
-  defp regenerate_types_for_module(module) do
+  defp regenerate_types_for_module(module, type) do
     output_dir = Application.get_env(:nb_ts, :output_dir, "assets/js/types")
 
     try do
       # Use incremental generation for better performance
-      case NbTs.Generator.generate_incremental(
-             serializers: [module],
-             output_dir: output_dir,
-             validate: false
-           ) do
+      opts =
+        case type do
+          :serializer -> [serializers: [module], output_dir: output_dir, validate: false]
+          :controller -> [controllers: [module], output_dir: output_dir, validate: false]
+        end
+
+      case NbTs.Generator.generate_incremental(opts) do
         {:ok, %{added: added, updated: updated}} ->
           if added > 0 or updated > 0 do
             module_name = inspect(module)
