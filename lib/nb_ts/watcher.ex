@@ -45,17 +45,19 @@ defmodule NbTs.Watcher do
   @impl true
   def init(opts) do
     watch_dirs = opts[:watch_dirs] || ["lib"]
-    
+
     # Start FileSystem watcher
     {:ok, watcher_pid} = FileSystem.start_link(dirs: watch_dirs)
     FileSystem.subscribe(watcher_pid)
-    
+
     Logger.debug("NbTs.Watcher started, watching: #{inspect(watch_dirs)}")
-    
-    {:ok, %{
-      watcher: watcher_pid,
-      timers: %{}  # path => timer_ref
-    }}
+
+    {:ok,
+     %{
+       watcher: watcher_pid,
+       # path => timer_ref
+       timers: %{}
+     }}
   end
 
   @impl true
@@ -77,7 +79,7 @@ defmodule NbTs.Watcher do
   @impl true
   def handle_info({:recompile, path}, state) do
     recompile_file(path)
-    
+
     # Remove timer from state
     state = %{state | timers: Map.delete(state.timers, path)}
     {:noreply, state}
@@ -90,10 +92,10 @@ defmodule NbTs.Watcher do
       nil -> :ok
       timer_ref -> Process.cancel_timer(timer_ref)
     end
-    
+
     # Schedule new recompilation
     timer_ref = Process.send_after(self(), {:recompile, path}, @debounce_ms)
-    
+
     %{state | timers: Map.put(state.timers, path, timer_ref)}
   end
 
@@ -106,8 +108,16 @@ defmodule NbTs.Watcher do
         case Code.compile_file(path) do
           modules when is_list(modules) ->
             module_names = Enum.map(modules, fn {mod, _bytecode} -> inspect(mod) end)
-            Logger.debug("Recompiled: #{Path.relative_to_cwd(path)} (#{Enum.join(module_names, ", ")})")
-            
+
+            Logger.debug(
+              "Recompiled: #{Path.relative_to_cwd(path)} (#{Enum.join(module_names, ", ")})"
+            )
+
+            # Manually trigger compile hooks since Code.compile_file doesn't fire @after_compile
+            Enum.each(modules, fn {module, bytecode} ->
+              trigger_compile_hooks(module, bytecode)
+            end)
+
           _ ->
             :ok
         end
@@ -115,6 +125,20 @@ defmodule NbTs.Watcher do
     rescue
       error ->
         Logger.warning("Failed to recompile #{path}: #{inspect(error)}")
+    end
+  end
+
+  # Manually trigger NbTs.CompileHooks for a module
+  defp trigger_compile_hooks(module, bytecode) do
+    try do
+      # Check if NbTs.CompileHooks is available
+      if Code.ensure_loaded?(NbTs.CompileHooks) do
+        # Create a minimal env struct for the callback
+        env = %{module: module}
+        NbTs.CompileHooks.__after_compile__(env, bytecode)
+      end
+    rescue
+      _ -> :ok
     end
   end
 end
