@@ -64,8 +64,14 @@ defmodule NbTs.IndexManager do
 
         {interface_name, filename}
       end)
+      # Convert to map to ensure uniqueness
+      |> Map.new()
 
-    update_index(output_dir, added: exports)
+    # Write index directly (don't use update_index which merges with existing)
+    index_path = Path.join(output_dir, "index.ts")
+    write_index(index_path, exports)
+
+    {:ok, map_size(exports)}
   end
 
   # Extract interface name from a TypeScript file
