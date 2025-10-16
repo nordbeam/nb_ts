@@ -58,10 +58,30 @@ defmodule NbTs.IndexManager do
     exports =
       Enum.map(files, fn filepath ->
         filename = Path.basename(filepath, ".ts")
-        {filename, filename}
+
+        # Extract the actual interface/type name from the file content
+        interface_name = extract_interface_name(filepath) || filename
+
+        {interface_name, filename}
       end)
 
     update_index(output_dir, added: exports)
+  end
+
+  # Extract interface name from a TypeScript file
+  # Returns the name of the first exported interface or type
+  defp extract_interface_name(filepath) do
+    case File.read(filepath) do
+      {:ok, content} ->
+        # Match: export interface InterfaceName or export type TypeName
+        case Regex.run(~r/export (?:interface|type) (\w+)/, content) do
+          [_, name] -> name
+          nil -> nil
+        end
+
+      {:error, _} ->
+        nil
+    end
   end
 
   @doc """
