@@ -452,11 +452,16 @@ defmodule NbTs.Interface do
         Keyword.has_key?(opts, :type) ->
           type = Keyword.get(opts, :type)
 
-          # Check if type is a custom string
-          if is_binary(type) do
-            {type, []}
-          else
-            {elixir_type_to_typescript(type), []}
+          # Check if type is a ~TS sigil (returns {:typescript, "..."})
+          case type do
+            {:typescript, ts_string} when is_binary(ts_string) ->
+              {ts_string, []}
+
+            type when is_binary(type) ->
+              {type, []}
+
+            _ ->
+              {elixir_type_to_typescript(type), []}
           end
 
         # Has a serializer module
@@ -482,11 +487,16 @@ defmodule NbTs.Interface do
         Map.has_key?(prop_config, :type) ->
           type = prop_config.type
 
-          # Check if type is a custom string
-          if is_binary(type) do
-            {type, []}
-          else
-            {elixir_type_to_typescript(type), []}
+          # Check if type is a ~TS sigil (returns {:typescript, "..."})
+          case type do
+            {:typescript, ts_string} when is_binary(ts_string) ->
+              {ts_string, []}
+
+            type when is_binary(type) ->
+              {type, []}
+
+            _ ->
+              {elixir_type_to_typescript(type), []}
           end
 
         # Default to any
