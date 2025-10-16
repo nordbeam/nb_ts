@@ -241,7 +241,32 @@ defmodule NbTs.Generator do
 
     all_results = serializer_results ++ shared_props_results ++ page_results
 
-    # Update index incrementally
+    # Check if index needs to be rebuilt
+    # If there are many "updated" files but index is small/missing, rebuild instead of incremental update
+    index_path = Path.join(output_dir, "index.ts")
+
+    index_entry_count =
+      if File.exists?(index_path) do
+        index_path
+        |> File.read!()
+        |> String.split("\n", trim: true)
+        |> length()
+      else
+        0
+      end
+
+    # Count actual .ts files (excluding index.ts)
+    actual_file_count =
+      output_dir
+      |> Path.join("*.ts")
+      |> Path.wildcard()
+      |> Enum.reject(&String.ends_with?(&1, "index.ts"))
+      |> length()
+
+    # If index is significantly out of sync (more than 5 files missing), rebuild it
+    should_rebuild = actual_file_count > index_entry_count + 5
+
+    # Prepare added and updated lists
     added =
       all_results
       |> Enum.filter(&(elem(&1, 0) == :added))
@@ -260,7 +285,13 @@ defmodule NbTs.Generator do
         {name, filename_without_ext}
       end)
 
-    NbTs.IndexManager.update_index(output_dir, added: added, updated: updated)
+    if should_rebuild do
+      # Index is out of sync - do full rebuild
+      NbTs.IndexManager.rebuild_index(output_dir)
+    else
+      # Index is in sync - do incremental update
+      NbTs.IndexManager.update_index(output_dir, added: added, updated: updated)
+    end
 
     # Validate if requested
     if validate? do
