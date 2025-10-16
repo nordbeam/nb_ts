@@ -452,9 +452,9 @@ defmodule NbTs.Interface do
         Keyword.has_key?(opts, :type) ->
           type = Keyword.get(opts, :type)
 
-          # Check if type is a ~TS sigil (returns {:typescript, "..."})
+          # Check if type is a ~TS sigil (returns {:typescript_validated, "..."})
           case type do
-            {:typescript, ts_string} when is_binary(ts_string) ->
+            {:typescript_validated, ts_string} when is_binary(ts_string) ->
               {ts_string, []}
 
             type when is_binary(type) ->
@@ -487,9 +487,9 @@ defmodule NbTs.Interface do
         Map.has_key?(prop_config, :type) ->
           type = prop_config.type
 
-          # Check if type is a ~TS sigil (returns {:typescript, "..."})
+          # Check if type is a ~TS sigil (returns {:typescript_validated, "..."})
           case type do
-            {:typescript, ts_string} when is_binary(ts_string) ->
+            {:typescript_validated, ts_string} when is_binary(ts_string) ->
               {ts_string, []}
 
             type when is_binary(type) ->
