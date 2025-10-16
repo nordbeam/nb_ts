@@ -40,10 +40,10 @@ defmodule Mix.Tasks.Compile.NbTsTest do
   end
 
   describe "run/1" do
-    test "returns {:noreply, []} when auto_generate is disabled", %{output_dir: dir} do
+    test "returns {:noop, []} when auto_generate is disabled", %{output_dir: dir} do
       set_project_config(nb_ts: [output_dir: dir, auto_generate: false])
 
-      assert {:noreply, []} = CompileNbTs.run([])
+      assert {:noop, []} = CompileNbTs.run([])
     end
 
     test "generates types for changed modules on first run", %{output_dir: dir} do
@@ -99,7 +99,7 @@ defmodule Mix.Tasks.Compile.NbTsTest do
       :timer.sleep(10)
 
       # Second run with no changes
-      assert {:noreply, []} = CompileNbTs.run([])
+      assert {:noop, []} = CompileNbTs.run([])
 
       # File should not have been modified
       assert File.stat!(ts_file).mtime == initial_mtime
@@ -174,7 +174,7 @@ defmodule Mix.Tasks.Compile.NbTsTest do
       result = CompileNbTs.run([])
 
       assert match?({:error, _}, result) or match?({:ok, _}, result) or
-               match?({:noreply, _}, result)
+               match?({:noop, _}, result)
     end
 
     test "detects both serializers and controllers", %{output_dir: dir} do
@@ -344,7 +344,7 @@ defmodule Mix.Tasks.Compile.NbTsTest do
       # Should use default directory ("assets/js/types")
       # This test just ensures it doesn't crash
       result = CompileNbTs.run([])
-      assert match?({:ok, _}, result) or match?({:noreply, _}, result)
+      assert match?({:ok, _}, result) or match?({:noop, _}, result)
     end
   end
 
@@ -354,6 +354,13 @@ defmodule Mix.Tasks.Compile.NbTsTest do
     Application.put_env(:nb_ts, :test_project_config, config)
 
     # Mock Mix.Project.config/0 to return our test config
+    # Clean up any existing mocks first
+    try do
+      :meck.unload(Mix.Project)
+    rescue
+      _ -> :ok
+    end
+
     :meck.new(Mix.Project, [:passthrough])
 
     :meck.expect(Mix.Project, :config, fn ->

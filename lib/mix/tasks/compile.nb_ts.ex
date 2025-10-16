@@ -23,14 +23,14 @@ defmodule Mix.Tasks.Compile.NbTs do
 
   Returns:
   - `{:ok, []}` - Successfully generated types for changed modules
-  - `{:noreply, []}` - Skipped generation (disabled or no changes)
+  - `{:noop, []}` - Skipped generation (disabled or no changes)
   - `{:error, []}` - Error during generation
   """
   def run(_args) do
     config = get_config()
 
     unless config[:auto_generate] do
-      {:noreply, []}
+      {:noop, []}
     else
       output_dir = config[:output_dir] || "assets/js/types"
 
@@ -49,7 +49,7 @@ defmodule Mix.Tasks.Compile.NbTs do
 
       if changed_serializers == [] and changed_controllers == [] do
         # No changes detected
-        {:noreply, []}
+        {:noop, []}
       else
         # Generate types for changed modules
         result =
