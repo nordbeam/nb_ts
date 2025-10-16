@@ -7,6 +7,7 @@ defmodule NbTs.TypeMapper do
   Converts a field's type options to TypeScript type string.
   """
   def to_typescript(%{type: :string}), do: "string"
+  def to_typescript(%{type: :integer}), do: "number"
   def to_typescript(%{type: :number}), do: "number"
   def to_typescript(%{type: :boolean}), do: "boolean"
   def to_typescript(%{type: :decimal}), do: "number"

@@ -7,7 +7,9 @@ defmodule NbTs.Application do
   def start(_type, _args) do
     children = [
       # Registry for tracking serializers
-      {NbTs.Registry, []}
+      {NbTs.Registry, []},
+      # Dependency tracker for managing notebook dependencies
+      {NbTs.DependencyTracker, []}
     ]
 
     opts = [strategy: :one_for_one, name: NbTs.Supervisor]

@@ -36,3 +36,5 @@ nb_ts-*.tar
 
 # macOS
 .DS_Store
+/assets/
+/.mix/

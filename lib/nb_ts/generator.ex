@@ -118,6 +118,175 @@ defmodule NbTs.Generator do
   end
 
   @doc """
+  Generates TypeScript types incrementally for specific modules.
+
+  More efficient than `generate/1` when only a few modules changed.
+
+  ## Options
+
+    * `:serializers` - List of serializer modules to regenerate
+    * `:controllers` - List of controller modules to regenerate
+    * `:shared_props` - List of shared props modules to regenerate
+    * `:output_dir` - Output directory (default: "assets/js/types")
+    * `:validate` - Validate generated TypeScript (default: false)
+
+  ## Examples
+
+      # Regenerate types for specific modules
+      NbTs.Generator.generate_incremental(
+        serializers: [MyApp.UserSerializer],
+        controllers: [MyAppWeb.UserController],
+        output_dir: "assets/types"
+      )
+  """
+  def generate_incremental(opts) do
+    serializers = Keyword.get(opts, :serializers, [])
+    controllers = Keyword.get(opts, :controllers, [])
+    shared_props = Keyword.get(opts, :shared_props, [])
+    output_dir = Keyword.get(opts, :output_dir, "assets/js/types")
+    validate? = Keyword.get(opts, :validate, false)
+
+    File.mkdir_p!(output_dir)
+
+    # Generate serializer interfaces
+    serializer_results =
+      Enum.map(serializers, fn serializer ->
+        try do
+          # Check file existence BEFORE generating
+          # Use module name for filename (not interface name)
+          module_name =
+            serializer
+            |> Module.split()
+            |> List.last()
+
+          filename = "#{module_name}.ts"
+          filepath = Path.join(output_dir, filename)
+          status = if File.exists?(filepath), do: :updated, else: :added
+
+          # Now generate
+          {interface_name, filename} = generate_interface(serializer, output_dir, false)
+
+          {status, interface_name, filename}
+        rescue
+          _ -> nil
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    # Generate shared props interfaces
+    shared_props_results =
+      Enum.map(shared_props, fn module ->
+        try do
+          # Get interface name first
+          interface_name =
+            module
+            |> Module.split()
+            |> List.last()
+            |> Kernel.<>("Props")
+
+          filename = "#{interface_name}.ts"
+          filepath = Path.join(output_dir, filename)
+          status = if File.exists?(filepath), do: :updated, else: :added
+
+          # Now generate
+          {interface_name, filename} = generate_shared_props_interface(module, output_dir, false)
+
+          {status, interface_name, filename}
+        rescue
+          _ -> nil
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    # Generate page props
+    page_results =
+      Enum.flat_map(controllers, fn controller ->
+        try do
+          # Get all pages for this controller
+          pages =
+            if function_exported?(controller, :__inertia_pages__, 0) do
+              controller.__inertia_pages__() |> Enum.map(fn {name, _} -> {name, nil} end)
+            else
+              []
+            end
+
+          # Check existence first, then generate
+          page_results_with_status =
+            if function_exported?(controller, :__inertia_pages__, 0) do
+              controller.__inertia_pages__()
+              |> Enum.map(fn {_page_name, page_config} ->
+                component_name = page_config.component
+                interface_name = component_name_to_page_interface(component_name)
+                filename = "#{interface_name}.ts"
+                filepath = Path.join(output_dir, filename)
+                {interface_name, filename, File.exists?(filepath)}
+              end)
+            else
+              []
+            end
+
+          # Now do the actual generation
+          page_props = generate_page_props(controller, pages, output_dir, false)
+
+          # Combine with status info
+          Enum.zip(page_props, page_results_with_status)
+          |> Enum.map(fn {{interface_name, filename}, {_, _, existed?}} ->
+            status = if existed?, do: :updated, else: :added
+            {status, interface_name, filename}
+          end)
+        rescue
+          _ -> []
+        end
+      end)
+
+    all_results = serializer_results ++ shared_props_results ++ page_results
+
+    # Update index incrementally
+    added =
+      all_results
+      |> Enum.filter(&(elem(&1, 0) == :added))
+      |> Enum.map(fn {_, name, file} ->
+        # Remove .ts extension for index
+        filename_without_ext = String.replace_suffix(file, ".ts", "")
+        {name, filename_without_ext}
+      end)
+
+    updated =
+      all_results
+      |> Enum.filter(&(elem(&1, 0) == :updated))
+      |> Enum.map(fn {_, name, file} ->
+        # Remove .ts extension for index
+        filename_without_ext = String.replace_suffix(file, ".ts", "")
+        {name, filename_without_ext}
+      end)
+
+    NbTs.IndexManager.update_index(output_dir, added: added, updated: updated)
+
+    # Validate if requested
+    if validate? do
+      case validate_directory(output_dir) do
+        :ok ->
+          {:ok,
+           %{
+             updated_files: length(all_results),
+             added: length(added),
+             updated: length(updated)
+           }}
+
+        {:error, file, reason} ->
+          {:error, {:validation_failed, file, reason}}
+      end
+    else
+      {:ok,
+       %{
+         updated_files: length(all_results),
+         added: length(added),
+         updated: length(updated)
+       }}
+    end
+  end
+
+  @doc """
   Validates TypeScript code.
 
   Returns `{:ok, code}` if valid, `{:error, reason}` if invalid.
@@ -468,7 +637,13 @@ defmodule NbTs.Generator do
     interface = Interface.build(serializer)
     typescript = Interface.to_typescript(interface)
 
-    filename = "#{interface.name}.ts"
+    # Use the last part of the module name for the filename (not the interface name)
+    module_name =
+      serializer
+      |> Module.split()
+      |> List.last()
+
+    filename = "#{module_name}.ts"
     filepath = Path.join(output_dir, filename)
 
     File.write!(filepath, typescript)

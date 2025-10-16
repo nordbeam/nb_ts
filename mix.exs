@@ -39,7 +39,10 @@ defmodule NbTs.MixProject do
       {:file_system, "~> 1.0"},
 
       # Development dependencies
-      {:ex_doc, "~> 0.31", only: :dev, runtime: false}
+      {:ex_doc, "~> 0.31", only: :dev, runtime: false},
+
+      # Test dependencies
+      {:meck, "~> 0.9", only: :test}
     ]
   end
 

@@ -86,9 +86,36 @@ defmodule NbTs.Interface do
   end
 
   defp build_fields_with_imports(type_metadata, visited) do
+    # Handle both map format and list format (for test serializers)
+    normalized_metadata =
+      case type_metadata do
+        %{fields: field_list} when is_list(field_list) ->
+          # Convert list format to map format
+          Enum.map(field_list, fn field_spec ->
+            name = Map.get(field_spec, :name)
+            type = Map.get(field_spec, :type)
+            opts = Map.get(field_spec, :opts, [])
+
+            # Build type_info map from field spec
+            type_info = %{
+              type: type,
+              optional: Keyword.get(opts, :optional, false),
+              nullable: Keyword.get(opts, :nullable, false),
+              list: Keyword.get(opts, :list, false),
+              serializer: Map.get(field_spec, :serializer)
+            }
+
+            {name, type_info}
+          end)
+
+        metadata when is_map(metadata) ->
+          # Already in map format
+          Enum.to_list(metadata)
+      end
+
     {fields, imports} =
-      Enum.reduce(type_metadata, {[], []}, fn {field_name, type_info},
-                                              {fields_acc, imports_acc} ->
+      Enum.reduce(normalized_metadata, {[], []}, fn {field_name, type_info},
+                                                    {fields_acc, imports_acc} ->
         {field_type, new_imports} = resolve_field_type(type_info, visited)
 
         field = %{
