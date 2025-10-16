@@ -1,49 +1,42 @@
 defmodule NbTs.Watcher do
   @moduledoc """
-  FileSystem-based watcher for automatic TypeScript type generation.
+  File watcher that automatically recompiles changed modules and triggers
+  TypeScript type regeneration during development.
 
-  This GenServer watches for changes in Elixir files and automatically
-  regenerates TypeScript types when serializers or Inertia pages are modified.
+  This watcher monitors Elixir source files and recompiles only the specific
+  files that change, triggering the @after_compile hooks which regenerate
+  TypeScript types incrementally.
 
-  ## Usage
+  ## How it works
 
-  Add to your application's supervision tree in `lib/my_app/application.ex`:
+  1. FileSystem monitors the lib/ directory for changes
+  2. When a .ex file is modified, it's debounced for 200ms
+  3. The specific file is recompiled using Code.compile_file/1
+  4. @after_compile hooks fire for that module
+  5. TypeScript types regenerate automatically if it's a serializer/controller
 
-      def start(_type, _args) do
-        children = [
-          # ... other children
-          {NbTs.Watcher, output_dir: "assets/js/types"}
-        ]
+  ## Configuration
 
-        opts = [strategy: :one_for_one, name: MyApp.Supervisor]
-        Supervisor.start_link(children, opts)
-      end
+      # config/dev.exs
+      config :nb_ts,
+        output_dir: "assets/js/types",
+        auto_generate: true,  # Enable compile hooks (default: true in dev)
+        watch: true           # Enable file watcher (default: true in dev)
 
-  Or configure it to only run in development:
+  Set `watch: false` to disable the file watcher while keeping other features.
 
-      defp children(:dev) do
-        [
-          {NbTs.Watcher, output_dir: "assets/js/types"}
-        ]
-      end
+  ## When it runs
 
-      defp children(_), do: []
-
-      def start(_type, _args) do
-        children = [
-          # ... other children
-        ] ++ children(Mix.env())
-
-        opts = [strategy: :one_for_one, name: MyApp.Supervisor]
-        Supervisor.start_link(children, opts)
-      end
+  - Only in :dev environment
+  - Only when auto_generate is enabled
+  - Only when watch is enabled (default: true)
+  - Automatically started by NbTs.Application
   """
 
   use GenServer
   require Logger
 
-  @default_output_dir "assets/js/types"
-  @debounce_delay 500
+  @debounce_ms 200
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -51,29 +44,26 @@ defmodule NbTs.Watcher do
 
   @impl true
   def init(opts) do
-    output_dir = Keyword.get(opts, :output_dir, @default_output_dir)
-    dirs = ["lib"]
-
-    {:ok, watcher_pid} = FileSystem.start_link(dirs: dirs)
+    watch_dirs = opts[:watch_dirs] || ["lib"]
+    
+    # Start FileSystem watcher
+    {:ok, watcher_pid} = FileSystem.start_link(dirs: watch_dirs)
     FileSystem.subscribe(watcher_pid)
-
-    Logger.info("NbTs file watcher started, watching: #{inspect(dirs)}")
-
-    {:ok, %{watcher_pid: watcher_pid, debounce_ref: nil, output_dir: output_dir}}
+    
+    Logger.debug("NbTs.Watcher started, watching: #{inspect(watch_dirs)}")
+    
+    {:ok, %{
+      watcher: watcher_pid,
+      timers: %{}  # path => timer_ref
+    }}
   end
 
   @impl true
-  def handle_info({:file_event, _watcher_pid, {path, _events}}, state) do
-    # Only regenerate for .ex files
-    if Path.extname(path) == ".ex" do
-      # Cancel previous debounce timer if exists
-      if state.debounce_ref do
-        Process.cancel_timer(state.debounce_ref)
-      end
-
-      # Debounce regeneration to avoid multiple runs
-      ref = Process.send_after(self(), :regenerate_types, @debounce_delay)
-      {:noreply, %{state | debounce_ref: ref}}
+  def handle_info({:file_event, _watcher_pid, {path, events}}, state) do
+    # Only handle .ex files that were modified
+    if Path.extname(path) == ".ex" and (:modified in events or :created in events) do
+      state = debounced_recompile(path, state)
+      {:noreply, state}
     else
       {:noreply, state}
     end
@@ -81,24 +71,50 @@ defmodule NbTs.Watcher do
 
   @impl true
   def handle_info({:file_event, _watcher_pid, :stop}, state) do
-    Logger.info("NbTs file watcher stopped")
     {:noreply, state}
   end
 
   @impl true
-  def handle_info(:regenerate_types, state) do
-    Logger.info("Regenerating TypeScript types...")
+  def handle_info({:recompile, path}, state) do
+    recompile_file(path)
+    
+    # Remove timer from state
+    state = %{state | timers: Map.delete(state.timers, path)}
+    {:noreply, state}
+  end
 
-    case NbTs.Generator.generate(output_dir: state.output_dir) do
-      {:ok, results} ->
-        Logger.info(
-          "TypeScript types regenerated successfully (#{results.total_files} files in #{results.output_dir})"
-        )
-
-      {:error, reason} ->
-        Logger.warning("Failed to regenerate TypeScript types: #{inspect(reason)}")
+  # Debounce rapid file changes
+  defp debounced_recompile(path, state) do
+    # Cancel existing timer for this path
+    case Map.get(state.timers, path) do
+      nil -> :ok
+      timer_ref -> Process.cancel_timer(timer_ref)
     end
+    
+    # Schedule new recompilation
+    timer_ref = Process.send_after(self(), {:recompile, path}, @debounce_ms)
+    
+    %{state | timers: Map.put(state.timers, path, timer_ref)}
+  end
 
-    {:noreply, %{state | debounce_ref: nil}}
+  # Recompile a single file
+  defp recompile_file(path) do
+    try do
+      # Check if file still exists (might have been deleted)
+      if File.exists?(path) do
+        # Recompile only this specific file
+        case Code.compile_file(path) do
+          modules when is_list(modules) ->
+            module_names = Enum.map(modules, fn {mod, _bytecode} -> inspect(mod) end)
+            Logger.debug("Recompiled: #{Path.relative_to_cwd(path)} (#{Enum.join(module_names, ", ")})")
+            
+          _ ->
+            :ok
+        end
+      end
+    rescue
+      error ->
+        Logger.warning("Failed to recompile #{path}: #{inspect(error)}")
+    end
   end
 end
