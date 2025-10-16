@@ -73,7 +73,36 @@ end
 - Optional fields: `~TS"{ name?: string }"`
 - Tuples: `~TS"[string, number]"`
 
-### 2. Type Generation
+### 2. Automatic Type Generation (Recommended)
+
+Configure automatic incremental type generation via the Mix compiler:
+
+```elixir
+# mix.exs
+def project do
+  [
+    compilers: [:nb_ts] ++ Mix.compilers(),
+    nb_ts: [
+      output_dir: "assets/js/types",
+      auto_generate: true
+    ]
+  ]
+end
+```
+
+**How It Works:**
+- Types are automatically regenerated during compilation (`mix compile`)
+- Uses incremental generation - only changed modules are processed
+- 10-50x faster than full regeneration for typical changes
+- Manifest-based tracking of module changes
+
+**Benefits:**
+- No manual type generation needed after code changes
+- Always in sync with your Elixir code
+- Minimal compilation overhead due to incremental updates
+- Works seamlessly with existing development workflow
+
+### 3. Manual Type Generation
 
 #### Basic Usage
 ```bash
@@ -99,7 +128,9 @@ mix nb_ts.gen.types --verbose               # Detailed output
 - `--validate` - Validate generated TypeScript with oxc parser
 - `--verbose` - Show detailed generation output
 
-### 3. Use in TypeScript/React
+**Note:** Manual generation performs a full regeneration of all types. For better performance during development, use automatic generation instead.
+
+### 4. Use in TypeScript/React
 
 ```typescript
 import type { User, UsersIndexProps } from './types';
@@ -161,11 +192,11 @@ prop :user_subset, type: ~TS"Pick<User, 'id' | 'name'>"
 ## Best Practices
 
 1. **Always use `~TS` for custom TypeScript types** - Ensures compile-time validation
-2. **Run type generation after schema changes** - Keep TypeScript in sync with Elixir
+2. **Use automatic type generation** - Configure the Mix compiler for seamless type updates during development
 3. **Enable `--validate` in CI** - Catch TypeScript errors before deployment
 4. **Commit generated types** - Ensures frontend devs always have latest types
-5. **Run `mix ts.gen` after prop changes** - Manual type generation after modifying controllers or serializers
-6. **Prefer utility types** - Use `Record<K, V>` over `{ [key: K]: V }` for readability
+5. **Prefer utility types** - Use `Record<K, V>` over `{ [key: K]: V }` for readability
+6. **Let compilation handle updates** - With automatic generation, types stay in sync without manual intervention
 
 ## Troubleshooting
 

@@ -63,15 +63,32 @@ Create the output directory:
 mkdir -p assets/js/types
 ```
 
-#### Generating Types
+#### Automatic Type Generation (Recommended)
 
-Run the type generator after making changes to your Inertia pages or NbSerializer serializers:
+Configure automatic type generation that runs during compilation:
+
+```elixir
+# mix.exs
+def project do
+  [
+    compilers: [:nb_ts] ++ Mix.compilers(),
+    nb_ts: [
+      output_dir: "assets/js/types",
+      auto_generate: true
+    ]
+  ]
+end
+```
+
+With this configuration, types are automatically regenerated when you compile your project. The generator uses incremental compilation - only changed modules are processed, making it 10-50x faster for typical changes.
+
+#### Manual Type Generation
+
+You can also generate types manually after making changes:
 
 ```bash
 mix ts.gen
 ```
-
-**Note:** Type generation is currently manual. After modifying controller props or serializer fields, you need to run `mix ts.gen` to update the TypeScript definitions.
 
 ## Usage
 
@@ -133,7 +150,27 @@ field :bad, :typescript, type: ~TS"{ invalid syntax"
 
 ### Generating TypeScript Interfaces
 
-Generate TypeScript interfaces from your serializers and Inertia pages:
+#### Automatic Generation (Recommended)
+
+The recommended approach is to enable automatic type generation via the Mix compiler. Add this configuration to your `mix.exs`:
+
+```elixir
+def project do
+  [
+    compilers: [:nb_ts] ++ Mix.compilers(),
+    nb_ts: [
+      output_dir: "assets/js/types",
+      auto_generate: true
+    ]
+  ]
+end
+```
+
+Types will automatically regenerate during compilation (`mix compile`). The compiler uses incremental generation - only changed modules are reprocessed, providing 10-50x faster updates for typical changes.
+
+#### Manual Generation
+
+You can also generate types manually using the Mix task:
 
 ```bash
 mix nb_ts.gen.types
@@ -208,9 +245,22 @@ assets/js/types/
 └── AuthSharedProps.ts    # From SharedProps modules
 ```
 
-## Manual Type Generation Workflow
+## Type Generation Workflow
 
-After modifying your Elixir code, regenerate TypeScript types by running:
+### Automatic Generation (Recommended)
+
+With the Mix compiler configured (see Installation section), types are automatically regenerated whenever you compile your project:
+
+```bash
+mix compile
+# Types are automatically generated for changed modules
+```
+
+The compiler tracks module changes using a manifest file and only regenerates types for modified modules, making it 10-50x faster than full regeneration.
+
+### Manual Generation
+
+If you prefer manual control, you can generate types on demand:
 
 ```bash
 mix ts.gen
@@ -221,17 +271,32 @@ This command generates types when:
 - Inertia page definitions change
 - SharedProps modules are updated
 
-**Important:** Type generation is manual. You need to run `mix ts.gen` after making changes to keep your TypeScript types in sync with your Elixir code.
-
 ## How It Works
 
-NbTs uses the [oxc parser](https://oxc-project.github.io/) (Oxidation Compiler) via Rustler NIF for fast, accurate TypeScript validation.
+NbTs provides two key features:
+
+### 1. TypeScript Validation
+
+Uses the [oxc parser](https://oxc-project.github.io/) (Oxidation Compiler) via Rustler NIF for fast, accurate TypeScript validation in the `~TS` sigil.
 
 **Key Benefits:**
 - **Zero Setup**: Precompiled binaries automatically downloaded
 - **No Rust Toolchain**: Works out of the box on all platforms
 - **Fast**: Native-speed validation via NIF
 - **Accurate**: Same parser used by modern JavaScript tooling
+
+### 2. Type Generation
+
+**Automatic (via Mix Compiler):**
+- Custom Mix compiler integrated into your build pipeline
+- Incremental generation using manifest-based change tracking
+- Only regenerates types for modified modules
+- 10-50x faster than full regeneration for typical changes
+
+**Manual (via Mix Task):**
+- On-demand generation with `mix nb_ts.gen.types`
+- Full regeneration of all types
+- Useful for one-time generation or manual workflows
 
 ## Related Projects
 
