@@ -730,8 +730,10 @@ defmodule NbTs.Generator do
   defp generate_index(interfaces, output_dir) do
     exports =
       interfaces
-      |> Enum.map_join("\n", fn {name, _filename} ->
-        ~s(export type { #{name} } from "./#{name}";)
+      |> Enum.map_join("\n", fn {name, filename} ->
+        # Strip .ts extension from filename for the import path
+        filename_without_ext = String.replace_suffix(filename, ".ts", "")
+        ~s(export type { #{name} } from "./#{filename_without_ext}";)
       end)
 
     index_path = Path.join(output_dir, "index.ts")
