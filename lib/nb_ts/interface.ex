@@ -136,9 +136,10 @@ defmodule NbTs.Interface do
     cond do
       # Handle relationship types
       serializer = type_info[:serializer] ->
-        name = interface_name(serializer)
-        # Always use type name and add import, regardless of circular status
-        {apply_modifiers(name, type_info), [name]}
+        type_name = interface_name(serializer)
+        module_name = serializer |> Module.split() |> List.last()
+        # Return tuple of {interface_name, module_name} for correct import paths
+        {apply_modifiers(type_name, type_info), [{type_name, module_name}]}
 
       # Handle polymorphic types
       type_info[:polymorphic] ->
@@ -161,8 +162,14 @@ defmodule NbTs.Interface do
 
   defp render_imports(imports) do
     imports
-    |> Enum.map_join("\n", fn import_name ->
-      ~s(import type { #{import_name} } from "./#{import_name}";)
+    |> Enum.map_join("\n", fn
+      # Handle new tuple format {interface_name, module_name}
+      {interface_name, module_name} ->
+        ~s(import type { #{interface_name} } from "./#{module_name}";)
+
+      # Handle legacy string format (for shared props)
+      import_name when is_binary(import_name) ->
+        ~s(import type { #{import_name} } from "./#{import_name}";)
     end)
   end
 
@@ -361,7 +368,9 @@ defmodule NbTs.Interface do
         []
       else
         Enum.map(shared_modules, fn module ->
-          shared_props_interface_name(module)
+          interface = shared_props_interface_name(module)
+          # Shared props use interface name as filename too
+          {interface, interface}
         end)
       end
 
@@ -480,7 +489,8 @@ defmodule NbTs.Interface do
             # It's a module - extract interface name
             true ->
               type_name = interface_name(serializer)
-              {type_name, [type_name]}
+              module_name = serializer |> Module.split() |> List.last()
+              {type_name, [{type_name, module_name}]}
           end
 
         # Has a primitive type
