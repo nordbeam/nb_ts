@@ -47,7 +47,18 @@ defmodule Mix.Tasks.NbTs.DownloadTsgo do
     {:ok, _} = Application.ensure_all_started(:inets)
     {:ok, _} = Application.ensure_all_started(:ssl)
 
-    priv_dir = Path.join([Mix.Project.app_path(), "priv", "tsgo"])
+    # Get the priv directory for nb_ts specifically, not the current project
+    # This ensures binaries are installed in deps/nb_ts/priv/tsgo
+    priv_dir =
+      case :code.priv_dir(:nb_ts) do
+        {:error, :bad_name} ->
+          # nb_ts not loaded yet, use build path
+          Path.join([Mix.Project.build_path(), "lib", "nb_ts", "priv", "tsgo"])
+
+        priv_path ->
+          Path.join([to_string(priv_path), "tsgo"])
+      end
+
     File.mkdir_p!(priv_dir)
 
     platforms = get_platforms()
