@@ -34,6 +34,9 @@ nb_ts-*.tar
 # Precompiled NIFs
 /priv/native/
 
+# tsgo binaries (download during build)
+/priv/tsgo/
+
 # macOS
 .DS_Store
 /assets/

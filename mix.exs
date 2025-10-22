@@ -24,16 +24,15 @@ defmodule NbTs.MixProject do
 
   def application do
     [
-      extra_applications: [:logger],
+      extra_applications: [:logger, :inets, :ssl],
       mod: {NbTs.Application, []}
     ]
   end
 
   defp deps do
     [
-      # Core dependencies for Rustler NIF
-      {:rustler, "~> 0.37", runtime: false},
-      {:rustler_precompiled, "~> 0.8"},
+      # Required for tsgo pool
+      {:nimble_pool, "~> 1.1"},
 
       # Required for NbTs.Watcher
       {:file_system, "~> 1.0"},
@@ -62,7 +61,7 @@ defmodule NbTs.MixProject do
         "Documentation" => "https://hexdocs.pm/nb_ts"
       },
       maintainers: ["nordbeam"],
-      files: ~w(lib native .formatter.exs mix.exs README.md LICENSE CHANGELOG.md checksum-*.exs)
+      files: ~w(lib .formatter.exs mix.exs README.md LICENSE CHANGELOG.md)
     ]
   end
 
@@ -79,10 +78,6 @@ defmodule NbTs.MixProject do
   end
 
   defp aliases do
-    [
-      "rustler.download": [
-        "rustler_precompiled.download NbTs.Validator"
-      ]
-    ]
+    []
   end
 end

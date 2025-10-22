@@ -57,8 +57,8 @@ defmodule NbTs do
 
   ## Implementation
 
-  Uses the oxc parser (Oxidation Compiler) via Rustler NIF with precompiled
-  binaries. No Rust toolchain required - binaries are automatically downloaded
+  Uses tsgo (Microsoft's TypeScript compiler in Go) for full type checking.
+  No npm or Node.js required - native binaries are automatically downloaded
   from GitHub releases.
   """
 

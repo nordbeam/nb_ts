@@ -4,11 +4,11 @@ TypeScript type generation and validation for Elixir applications.
 
 ## Features
 
-- **~TS Sigil**: Compile-time TypeScript type validation using the oxc parser
+- **~TS Sigil**: Compile-time TypeScript type validation with full type checking
 - **Type Generation**: Generate TypeScript interfaces from NbSerializer serializers
 - **Inertia Integration**: Generate type-safe page props for Inertia.js applications
-- **Fast Validation**: Uses oxc parser (Oxidation Compiler) via Rustler NIF
-- **Zero Config**: Precompiled binaries - no Rust toolchain required
+- **Fast Validation**: Uses tsgo (10x faster than tsc) for full type checking
+- **Zero Config**: Native binaries - no npm/Node.js or Rust toolchain required
 
 ## Installation
 
@@ -185,7 +185,7 @@ mix ts.gen
 #### Options
 
 - `--output-dir DIR` - Output directory (default: `assets/js/types`)
-- `--validate` - Validate generated TypeScript using oxc parser
+- `--validate` - Validate generated TypeScript using tsgo
 - `--verbose` - Show detailed output
 
 #### Examples
@@ -277,13 +277,40 @@ NbTs provides two key features:
 
 ### 1. TypeScript Validation
 
-Uses the [oxc parser](https://oxc-project.github.io/) (Oxidation Compiler) via Rustler NIF for fast, accurate TypeScript validation in the `~TS` sigil.
+NbTs uses [tsgo](https://github.com/microsoft/typescript-go) (Microsoft's native Go TypeScript compiler) for full type checking in the `~TS` sigil.
 
-**Key Benefits:**
-- **Zero Setup**: Precompiled binaries automatically downloaded
-- **No Rust Toolchain**: Works out of the box on all platforms
-- **Fast**: Native-speed validation via NIF
-- **Accurate**: Same parser used by modern JavaScript tooling
+**Why tsgo?**
+- **Full Type Checking**: Validates types, not just syntax
+- **10x Faster**: ~10-20ms validation vs 50-200ms for traditional tsc
+- **Native Binary**: No npm or Node.js runtime dependency
+- **Drop-in Replacement**: Uses same CLI API as TypeScript compiler
+
+**Installation:**
+
+Download tsgo binaries (required for full type checking):
+
+```bash
+mix nb_ts.download_tsgo
+```
+
+This downloads tsgo binaries for all platforms (~36 MB total). Only the binary for your platform will be used at runtime (~6 MB).
+
+**Configuration:**
+
+```elixir
+# config/config.exs
+config :nb_ts,
+  # Pool size for concurrent validations (default: max(schedulers, 10))
+  tsgo_pool_size: 10,
+
+  # Validation timeout in milliseconds (default: 30_000)
+  tsgo_timeout: 30_000
+```
+
+**Performance:**
+- Validation time: 10-20ms per type check
+- Throughput: 500-1000 validations/second with default pool size
+- Memory: ~60-100 MB for pool of 10 workers
 
 ### 2. Type Generation
 

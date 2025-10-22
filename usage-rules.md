@@ -3,10 +3,10 @@
 ## Overview
 
 NbTs provides TypeScript type generation and validation for Elixir applications:
-- **`~TS` sigil** - Compile-time TypeScript validation using oxc parser
+- **`~TS` sigil** - Compile-time TypeScript validation using tsgo (full type checking)
 - **Type generation** - Auto-generate TypeScript interfaces from NbSerializer serializers
 - **Inertia integration** - Type-safe page props for Inertia.js applications
-- **Zero config** - Precompiled binaries, no Rust toolchain required
+- **Zero config** - Native binaries, no npm/Node.js required
 
 ## Installation
 
@@ -112,7 +112,7 @@ mix ts.gen                           # If alias configured
 
 #### With Options
 ```bash
-mix nb_ts.gen.types --validate              # Validate with oxc
+mix nb_ts.gen.types --validate              # Validate with tsgo
 mix nb_ts.gen.types --output-dir assets/ts  # Custom output
 mix nb_ts.gen.types --verbose               # Detailed output
 ```
@@ -125,7 +125,7 @@ mix nb_ts.gen.types --verbose               # Detailed output
 
 #### Command Options
 - `--output-dir DIR` - Output directory (default: `assets/js/types`)
-- `--validate` - Validate generated TypeScript with oxc parser
+- `--validate` - Validate generated TypeScript with tsgo
 - `--verbose` - Show detailed generation output
 
 **Note:** Manual generation performs a full regeneration of all types. For better performance during development, use automatic generation instead.
@@ -209,14 +209,20 @@ prop :user_subset, type: ~TS"Pick<User, 'id' | 'name'>"
 - Union syntax uses `|` not `,`
 - String literals use quotes: `'active'` not `active`
 
-### NIF Not Loaded
-**Problem:** Warning about NIF not available
+### tsgo Not Available
+**Problem:** Warning about tsgo not available
 
-**Solution:** NbTs automatically falls back to Elixir validation. Precompiled binaries are downloaded on first use. If issues persist:
+**Solution:** Download tsgo binaries:
+```bash
+mix nb_ts.download_tsgo
+```
+
+If issues persist, verify the binaries were downloaded correctly:
 ```bash
 mix deps.clean nb_ts --build
 mix deps.get
 mix deps.compile
+mix nb_ts.download_tsgo
 ```
 
 ### Types Not Generating

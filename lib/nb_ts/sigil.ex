@@ -2,7 +2,7 @@ defmodule NbTs.Sigil do
   @moduledoc """
   TypeScript type validation with the ~TS sigil.
 
-  Provides compile-time validation of TypeScript type syntax using the oxc parser.
+  Provides compile-time validation of TypeScript type syntax using tsgo for full type checking.
 
   ## Usage
 
@@ -49,8 +49,12 @@ defmodule NbTs.Sigil do
 
   ## Implementation
 
-  Uses the oxc parser (Oxidation Compiler) via Rustler NIF with precompiled binaries.
-  No Rust toolchain required - binaries are automatically downloaded from GitHub releases.
+  Uses tsgo (Microsoft's TypeScript compiler in Go) for full TypeScript type checking:
+  - **Full type checking** - Validates types, not just syntax
+  - **10x faster than tsc** - ~10-20ms validation vs 50-200ms
+  - **Native binary** - No npm or Node.js required
+
+  Binaries are automatically downloaded from GitHub releases.
   """
 
   @doc """
@@ -67,8 +71,8 @@ defmodule NbTs.Sigil do
       ~TS"'success' | 'error' | 'pending'"
   """
   defmacro sigil_TS({:<<>>, meta, [string]}, _opts) when is_binary(string) do
-    # Validate at compile time
-    case NbTs.Validator.validate(string) do
+    # Validate at compile time using tsgo
+    case NbTs.Generator.validate(string) do
       {:ok, _validated} ->
         # Return a tagged tuple so the DSL can detect validated TypeScript types
         quote do
