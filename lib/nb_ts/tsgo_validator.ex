@@ -31,6 +31,22 @@ defmodule NbTs.TsgoValidator do
     # Ensure nb_ts application is started (important during compilation of dependent projects)
     Application.ensure_all_started(:nb_ts)
 
-    NbTs.TsgoPool.validate(typescript_code, opts)
+    # If pool is not available (e.g., binary not downloaded yet), skip validation
+    # This allows projects to compile before downloading the binary
+    case Process.whereis(NbTs.TsgoPool) do
+      nil ->
+        # Pool not started - skip validation during compilation
+        require Logger
+
+        Logger.warning(
+          "Skipping TypeScript validation - tsgo binary not available. Run: mix nb_ts.download_tsgo"
+        )
+
+        {:ok, typescript_code}
+
+      _pid ->
+        # Pool is available - perform validation
+        NbTs.TsgoPool.validate(typescript_code, opts)
+    end
   end
 end
