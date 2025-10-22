@@ -50,8 +50,8 @@ defmodule NbTs.TsgoPool do
     pool_size = Keyword.get(opts, :pool_size, @default_pool_size)
     name = Keyword.get(opts, :name, __MODULE__)
 
-    # Verify tsgo binary exists
-    _ = tsgo_binary_path!()
+    # Don't verify binary at startup - allow pool to start even if binary not downloaded yet
+    # Binary will be checked when actually needed (during validation)
 
     NimblePool.start_link(
       worker: {__MODULE__, opts},
