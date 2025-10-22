@@ -18,11 +18,41 @@ defmodule NbTs.Application do
   end
 
   # Only start TsgoPool in dev/test - validation is compile-time only
+  # Also check if binary exists to avoid startup errors before download
   defp tsgo_pool_child do
-    if Mix.env() in [:dev, :test] do
+    if Mix.env() in [:dev, :test] and tsgo_binary_exists?() do
       [{NbTs.TsgoPool, pool_size: pool_size()}]
     else
       []
+    end
+  end
+
+  defp tsgo_binary_exists? do
+    platform = detect_platform()
+    binary_name = "tsgo-#{platform}#{if platform =~ "windows", do: ".exe", else: ""}"
+
+    try do
+      priv_dir = :code.priv_dir(:nb_ts)
+      binary_path = Path.join([to_string(priv_dir), "tsgo", binary_name])
+      File.exists?(binary_path)
+    rescue
+      _ -> false
+    end
+  end
+
+  defp detect_platform do
+    os = :os.type()
+    arch = :erlang.system_info(:system_architecture) |> to_string()
+
+    case os do
+      {:unix, :darwin} ->
+        if arch =~ ~r/aarch64|arm/i, do: "darwin-arm64", else: "darwin-amd64"
+
+      {:unix, :linux} ->
+        if arch =~ ~r/aarch64|arm/i, do: "linux-arm64", else: "linux-amd64"
+
+      {:win32, _} ->
+        if arch =~ ~r/aarch64|arm/i, do: "windows-arm64", else: "windows-amd64"
     end
   end
 
