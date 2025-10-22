@@ -28,6 +28,9 @@ defmodule NbTs.TsgoValidator do
   """
   @spec validate(String.t(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
   def validate(typescript_code, opts \\ []) do
+    # Ensure nb_ts application is started (important during compilation of dependent projects)
+    Application.ensure_all_started(:nb_ts)
+
     NbTs.TsgoPool.validate(typescript_code, opts)
   end
 end
