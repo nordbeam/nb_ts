@@ -36,11 +36,12 @@ defmodule NbTs.TsgoValidator do
     case Process.whereis(NbTs.TsgoPool) do
       nil ->
         # Pool not started - skip validation during compilation
-        require Logger
+        # Log warning if configured (default: quiet in test mode)
+        if log_validation_warnings?() do
+          require Logger
 
-        Logger.warning(
-          "Skipping TypeScript validation - tsgo binary not available. Run: mix nb_ts.download_tsgo"
-        )
+          Logger.warning("Skipping TypeScript validation - tsgo binary not available. Run: mix nb_ts.download_tsgo")
+        end
 
         {:ok, typescript_code}
 
@@ -48,5 +49,12 @@ defmodule NbTs.TsgoValidator do
         # Pool is available - perform validation
         NbTs.TsgoPool.validate(typescript_code, opts)
     end
+  end
+
+  # Checks if validation warnings should be logged
+  # Defaults to false in test environment, true otherwise
+  # Can be overridden via application config
+  defp log_validation_warnings? do
+    Application.get_env(:nb_ts, :log_validation_warnings, Mix.env() != :test)
   end
 end
