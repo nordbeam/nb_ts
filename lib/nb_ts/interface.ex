@@ -114,8 +114,7 @@ defmodule NbTs.Interface do
       end
 
     {fields, imports} =
-      Enum.reduce(normalized_metadata, {[], []}, fn {field_name, type_info},
-                                                    {fields_acc, imports_acc} ->
+      Enum.reduce(normalized_metadata, {[], []}, fn {field_name, type_info}, {fields_acc, imports_acc} ->
         {field_type, new_imports} = resolve_field_type(type_info, visited)
 
         field = %{
@@ -129,7 +128,8 @@ defmodule NbTs.Interface do
         {[field | fields_acc], imports_acc ++ new_imports}
       end)
 
-    {Enum.reverse(fields), Enum.uniq(imports)}
+    sorted_fields = fields |> Enum.reverse() |> Enum.sort_by(fn field -> camelize_atom(field.name) end)
+    {sorted_fields, Enum.uniq(imports)}
   end
 
   defp resolve_field_type(type_info, _visited) do
@@ -433,7 +433,8 @@ defmodule NbTs.Interface do
         {[field | fields_acc], imports_acc ++ new_imports}
       end)
 
-    {Enum.reverse(fields), Enum.uniq(imports)}
+    sorted_fields = fields |> Enum.reverse() |> Enum.sort_by(fn field -> camelize_atom(field.name) end)
+    {sorted_fields, Enum.uniq(imports)}
   end
 
   defp build_page_props_fields(props) do
@@ -443,7 +444,8 @@ defmodule NbTs.Interface do
         {[field | fields_acc], imports_acc ++ new_imports}
       end)
 
-    {Enum.reverse(fields), Enum.uniq(imports)}
+    sorted_fields = fields |> Enum.reverse() |> Enum.sort_by(fn field -> camelize_atom(field.name) end)
+    {sorted_fields, Enum.uniq(imports)}
   end
 
   defp prop_config_to_field(prop_config) do
