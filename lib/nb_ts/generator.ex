@@ -463,14 +463,14 @@ defmodule NbTs.Generator do
         name == :page && arity == 1
       end)
 
-    if page_functions != [] do
+    if page_functions == [] do
+      []
+    else
       try do
         discover_page_names_from_module(controller)
       rescue
         _ -> []
       end
-    else
-      []
     end
   end
 
@@ -552,6 +552,7 @@ defmodule NbTs.Generator do
   defp generate_index(interfaces, output_dir) do
     exports =
       interfaces
+      |> Enum.sort_by(fn {name, _} -> name end)
       |> Enum.map_join("\n", fn {name, filename} ->
         # Strip .ts extension from filename for the import path
         filename_without_ext = String.replace_suffix(filename, ".ts", "")
@@ -572,8 +573,6 @@ defmodule NbTs.Generator do
   defp get_app_name do
     if Code.ensure_loaded?(Mix.Project) do
       Mix.Project.config()[:app]
-    else
-      nil
     end
   end
 
