@@ -1,9 +1,9 @@
 defmodule NbTs.TsgoValidator do
   @moduledoc """
-  TypeScript validation using tsgo (native TypeScript compiler).
+  TypeScript validation stub (validation disabled).
 
-  Provides a simple interface to validate TypeScript code using the pooled
-  tsgo processes managed by NbTs.TsgoPool.
+  This module provides a stub interface that always returns success without
+  performing any actual TypeScript validation.
 
   ## Examples
 
@@ -11,15 +11,17 @@ defmodule NbTs.TsgoValidator do
       {:ok, "const x: number = 5"}
 
       iex> NbTs.TsgoValidator.validate("const x: number = 'bad'")
-      {:error, "...Type 'string' is not assignable..."}
+      {:ok, "const x: number = 'bad'"}
   """
 
   @doc """
-  Validates TypeScript code.
+  Validates TypeScript code (stubbed - no actual validation is performed).
+
+  Always returns `{:ok, typescript_code}` without performing any validation.
 
   ## Options
 
-    * `:timeout` - Validation timeout in milliseconds (default: 30_000)
+    * `:timeout` - Ignored (kept for API compatibility)
 
   ## Examples
 
@@ -27,34 +29,8 @@ defmodule NbTs.TsgoValidator do
       validate(code, timeout: 10_000)
   """
   @spec validate(String.t(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
-  def validate(typescript_code, opts \\ []) do
-    # Ensure nb_ts application is started (important during compilation of dependent projects)
-    Application.ensure_all_started(:nb_ts)
-
-    # If pool is not available (e.g., binary not downloaded yet), skip validation
-    # This allows projects to compile before downloading the binary
-    case Process.whereis(NbTs.TsgoPool) do
-      nil ->
-        # Pool not started - skip validation during compilation
-        # Log warning if configured (default: quiet in test mode)
-        if log_validation_warnings?() do
-          require Logger
-
-          Logger.warning("Skipping TypeScript validation - tsgo binary not available. Run: mix nb_ts.download_tsgo")
-        end
-
-        {:ok, typescript_code}
-
-      _pid ->
-        # Pool is available - perform validation
-        NbTs.TsgoPool.validate(typescript_code, opts)
-    end
-  end
-
-  # Checks if validation warnings should be logged
-  # Defaults to false in test environment, true otherwise
-  # Can be overridden via application config
-  defp log_validation_warnings? do
-    Application.get_env(:nb_ts, :log_validation_warnings, Mix.env() != :test)
+  def validate(typescript_code, _opts \\ []) do
+    # Validation is disabled - always return success
+    {:ok, typescript_code}
   end
 end

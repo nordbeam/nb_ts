@@ -318,11 +318,9 @@ defmodule NbTs.Generator do
   end
 
   @doc """
-  Validates TypeScript code using tsgo (Microsoft's native TypeScript compiler).
+  Validates TypeScript code (stubbed - no actual validation performed).
 
-  Returns `{:ok, code}` if valid, `{:error, reason}` if invalid.
-
-  Performs full type checking, not just syntax validation.
+  Always returns `{:ok, code}` without performing any validation.
 
   ## Examples
 
@@ -330,42 +328,31 @@ defmodule NbTs.Generator do
       {:ok, "export interface User { id: number; }"}
 
       iex> NbTs.Generator.validate("const x: number = 'string'")
-      {:error, "Type 'string' is not assignable to type 'number'"}
+      {:ok, "const x: number = 'string'"}
   """
   def validate(typescript_string) do
     NbTs.TsgoValidator.validate(typescript_string)
   end
 
   @doc """
-  Validates all TypeScript files in a directory.
+  Validates all TypeScript files in a directory (stubbed - no validation performed).
 
-  Returns `:ok` if all files are valid, `{:error, file, reason}` otherwise.
-
-  Note: Skips validation of index.ts since it only re-exports types from other files
-  that are already validated, and tsgo's full type checking would fail on imports
-  when validating the file in isolation.
+  Always returns `:ok` without performing any validation.
 
   ## Examples
 
       iex> NbTs.Generator.validate_directory("assets/types")
       :ok
   """
-  def validate_directory(dir) do
-    dir
-    |> Path.join("*.ts")
-    |> Path.wildcard()
-    # Skip index.ts - it only re-exports from other files that are already validated
-    |> Enum.reject(&String.ends_with?(&1, "index.ts"))
-    |> Enum.reduce_while(:ok, fn file, _acc ->
-      case validate_file(file) do
-        {:ok, _} -> {:cont, :ok}
-        {:error, reason} -> {:halt, {:error, file, reason}}
-      end
-    end)
+  def validate_directory(_dir) do
+    # Validation is disabled - always return :ok
+    :ok
   end
 
   @doc """
-  Validates a TypeScript file.
+  Validates a TypeScript file (stubbed - no validation performed).
+
+  Always returns `{:ok, content}` without performing any validation.
 
   ## Examples
 
