@@ -151,7 +151,9 @@ defmodule NbTs.Interface do
 
       # Handle new unified syntax: list: :string (or other primitive)
       # When list contains a primitive type atom like :string, :number, etc.
-      is_atom(type_info[:list]) && !is_module?(type_info[:list]) ->
+      # Exclude boolean atoms (true/false) which indicate old format
+      type_info[:list] && is_atom(type_info[:list]) && !is_boolean(type_info[:list]) &&
+          !is_module?(type_info[:list]) ->
         primitive = type_info[:list]
         base_type = elixir_type_to_typescript(primitive)
         # Build Array<type> and apply nullable modifier if needed
