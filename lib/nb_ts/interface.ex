@@ -149,6 +149,14 @@ defmodule NbTs.Interface do
         type_union = type_info[:polymorphic] |> Enum.map_join(" | ", &to_string/1)
         {type_union, []}
 
+      # Handle new unified syntax: list: [enum: [...]]
+      # TypeMapper returns the complete type already, so don't apply modifiers
+      is_list(type_info[:list]) && Keyword.has_key?(type_info[:list], :enum) ->
+        base_type = NbTs.TypeMapper.to_typescript(type_info)
+        # Only apply nullable modifier if needed (list modifier already applied by TypeMapper)
+        type = if type_info[:nullable], do: "#{base_type} | null", else: base_type
+        {type, []}
+
       # Regular types
       true ->
         base_type = NbTs.TypeMapper.to_typescript(type_info)

@@ -48,6 +48,21 @@ defmodule NbTs.TypeMapper do
     types |> Enum.map(&to_string/1) |> Enum.join(" | ")
   end
 
+  # Handle new unified syntax: list: [enum: [...]]
+  def to_typescript(%{list: list_opts}) when is_list(list_opts) do
+    cond do
+      # list: [enum: [...]] -> ("value1" | "value2")[]
+      Keyword.has_key?(list_opts, :enum) ->
+        enum_values = Keyword.get(list_opts, :enum)
+        enum_union = enum_values |> Enum.map(&inspect/1) |> Enum.join(" | ")
+        "(#{enum_union})[]"
+
+      # list: :string -> string[] (but this is handled differently via apply_modifiers)
+      true ->
+        "unknown"
+    end
+  end
+
   def to_typescript(_), do: "unknown"
 
   @doc """
