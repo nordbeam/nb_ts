@@ -729,15 +729,4 @@ defmodule NbTs.TsgoPoolTest do
       assert {:ok, _} = TsgoPool.validate(code)
     end
   end
-
-  # Helper function for generating complex types
-  defp generate_complex_type(depth) do
-    """
-    type Complex = {
-      #{for i <- 1..depth do
-      "field#{i}: number | string | boolean | null;"
-    end |> Enum.join("\n  ")}
-    }
-    """
-  end
 end

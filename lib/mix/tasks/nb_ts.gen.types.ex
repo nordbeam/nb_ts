@@ -67,50 +67,13 @@ defmodule Mix.Tasks.NbTs.Gen.Types do
     Mix.shell().info("Generating TypeScript types...")
 
     # Call the generator
-    case Generator.generate(output_dir: output_dir, validate: validate?, verbose: verbose?) do
-      {:ok, results} ->
-        Mix.shell().info(
-          "✓ Generated #{results.total_files} TypeScript interfaces in #{results.output_dir}"
-        )
+    # Note: Validation is currently stubbed, so this will always succeed
+    {:ok, results} =
+      Generator.generate(output_dir: output_dir, validate: validate?, verbose: verbose?)
 
-      {:error, {:validation_failed, file, {:error, reason}}} ->
-        relative_file = Path.relative_to(file, output_dir)
-
-        Mix.shell().error("""
-
-        ✗ Validation failed for #{relative_file}:
-
-        #{reason}
-
-        This indicates a bug in NbTs's TypeScript generation.
-        Please report at: https://github.com/nordbeam/nb_ts/issues
-
-        You can skip validation with: mix nb_ts.gen.types (without --validate)
-        """)
-
-        exit({:shutdown, 1})
-
-      {:error, {:validation_failed, file, reason}} when is_binary(reason) ->
-        relative_file = Path.relative_to(file, output_dir)
-
-        Mix.shell().error("""
-
-        ✗ Validation failed for #{relative_file}:
-
-        #{reason}
-
-        This indicates a bug in NbTs's TypeScript generation.
-        Please report at: https://github.com/nordbeam/nb_ts/issues
-
-        You can skip validation with: mix nb_ts.gen.types (without --validate)
-        """)
-
-        exit({:shutdown, 1})
-
-      {:error, reason} ->
-        Mix.shell().error("✗ Generation failed: #{inspect(reason)}")
-        exit({:shutdown, 1})
-    end
+    Mix.shell().info(
+      "✓ Generated #{results.total_files} TypeScript interfaces in #{results.output_dir}"
+    )
   end
 
   # Load all BEAM files from the application's ebin directory.

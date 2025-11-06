@@ -62,10 +62,9 @@ defmodule Mix.Tasks.Compile.NbTs do
         # Write updated manifest
         write_manifest(new_manifest)
 
-        case result do
-          {:ok, _stats} -> {:ok, []}
-          {:error, _reason} -> {:error, []}
-        end
+        # Result will always be {:ok, stats} (validation is stubbed)
+        {:ok, _stats} = result
+        {:ok, []}
       end
     end
   rescue

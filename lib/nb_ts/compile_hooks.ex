@@ -128,17 +128,11 @@ defmodule NbTs.CompileHooks do
           :controller -> [controllers: [module], output_dir: output_dir, validate: false]
         end
 
-      case NbTs.Generator.generate_incremental(opts) do
-        {:ok, %{added: added, updated: updated}} ->
-          if added > 0 or updated > 0 do
-            module_name = inspect(module)
-            Logger.debug("TypeScript types regenerated for #{module_name}")
-          end
+      {:ok, %{added: added, updated: updated}} = NbTs.Generator.generate_incremental(opts)
 
-        {:error, reason} ->
-          Logger.warning(
-            "Failed to regenerate TypeScript types for #{inspect(module)}: #{inspect(reason)}"
-          )
+      if added > 0 or updated > 0 do
+        module_name = inspect(module)
+        Logger.debug("TypeScript types regenerated for #{module_name}")
       end
     rescue
       error ->

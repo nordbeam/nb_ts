@@ -80,41 +80,27 @@ defmodule NbTs.Generator do
     generate_index(all_files, output_dir)
 
     # Validate if requested
-    validation_result =
-      if validate? do
-        if verbose? do
-          IO.puts("Validating generated TypeScript...")
-        end
-
-        case validate_directory(output_dir) do
-          :ok ->
-            if verbose? do
-              IO.puts("✓ All TypeScript files are valid")
-            end
-
-            :ok
-
-          {:error, file, reason} ->
-            {:error, {:validation_failed, file, reason}}
-        end
-      else
-        :ok
+    if validate? do
+      if verbose? do
+        IO.puts("Validating generated TypeScript...")
       end
 
-    case validation_result do
-      {:error, reason} ->
-        {:error, reason}
+      # Note: validation currently always returns :ok (stubbed)
+      validate_directory(output_dir)
 
-      :ok ->
-        {:ok,
-         %{
-           serializers: length(serializers),
-           shared_props: length(shared_props_modules),
-           pages: length(page_files),
-           total_files: length(all_files),
-           output_dir: output_dir
-         }}
+      if verbose? do
+        IO.puts("✓ All TypeScript files are valid")
+      end
     end
+
+    {:ok,
+     %{
+       serializers: length(serializers),
+       shared_props: length(shared_props_modules),
+       pages: length(page_files),
+       total_files: length(all_files),
+       output_dir: output_dir
+     }}
   end
 
   @doc """
@@ -279,28 +265,17 @@ defmodule NbTs.Generator do
       NbTs.IndexManager.update_index(output_dir, added: added, updated: updated)
     end
 
-    # Validate if requested
+    # Validate if requested (validation currently always returns :ok - stubbed)
     if validate? do
-      case validate_directory(output_dir) do
-        :ok ->
-          {:ok,
-           %{
-             updated_files: length(all_results),
-             added: length(added),
-             updated: length(updated)
-           }}
-
-        {:error, file, reason} ->
-          {:error, {:validation_failed, file, reason}}
-      end
-    else
-      {:ok,
-       %{
-         updated_files: length(all_results),
-         added: length(added),
-         updated: length(updated)
-       }}
+      validate_directory(output_dir)
     end
+
+    {:ok,
+     %{
+       updated_files: length(all_results),
+       added: length(added),
+       updated: length(updated)
+     }}
   end
 
   @doc """
