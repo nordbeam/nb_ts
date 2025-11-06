@@ -43,6 +43,16 @@ defmodule NbTs.SerializerGenerationTest do
       assert result == "(\"active\" | \"inactive\")[]"
     end
 
+    test "handles list of serializers" do
+      # New format: list: SerializerModule
+      # When list contains a module, it should NOT be handled by TypeMapper
+      # Instead, it should be left as-is and handled by Interface.resolve_field_type
+      type_info = %{list: SomeSerializer}
+      result = TypeMapper.to_typescript(type_info)
+      # TypeMapper should return "unknown" for module values
+      assert result == "unknown"
+    end
+
     test "handles nullable fields" do
       type_info = %{type: :string, nullable: true}
       # TypeMapper returns base type, modifiers applied by apply_modifiers
@@ -186,6 +196,49 @@ defmodule NbTs.SerializerGenerationTest do
       assert typescript =~ "export interface TestWidget"
       assert typescript =~ "config: TestConfig;"
       assert typescript =~ ~s(import type { TestConfig } from "./TestConfigSerializer";)
+    end
+
+    test "generates TypeScript for serializer with list of serializers" do
+      defmodule TestUserSerializer do
+        def __nb_serializer__, do: :ok
+        def __nb_serializer_serialize__(data, _opts), do: data
+        def __nb_serializer_ensure_registered__, do: NbTs.Registry.register(__MODULE__)
+
+        def __nb_serializer_type_metadata__ do
+          %{
+            id: %{type: :integer, optional: false, nullable: false},
+            name: %{type: :string, optional: false, nullable: false}
+          }
+        end
+      end
+
+      defmodule TestProductSerializer do
+        def __nb_serializer__, do: :ok
+        def __nb_serializer_serialize__(data, _opts), do: data
+        def __nb_serializer_ensure_registered__, do: NbTs.Registry.register(__MODULE__)
+
+        def __nb_serializer_type_metadata__ do
+          %{
+            id: %{type: :integer, optional: false, nullable: false},
+            name: %{type: :string, optional: false, nullable: false},
+            users: %{
+              list: TestUserSerializer,
+              optional: false,
+              nullable: false
+            }
+          }
+        end
+      end
+
+      TestUserSerializer.__nb_serializer_ensure_registered__()
+      TestProductSerializer.__nb_serializer_ensure_registered__()
+
+      interface = Interface.build(TestProductSerializer)
+      typescript = Interface.to_typescript(interface)
+
+      assert typescript =~ "export interface TestProduct"
+      assert typescript =~ "users: Array<TestUser>;"
+      assert typescript =~ ~s(import type { TestUser } from "./TestUserSerializer";)
     end
 
     test "generates TypeScript for serializer with nullable enum" do

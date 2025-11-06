@@ -149,6 +149,17 @@ defmodule NbTs.Interface do
         type_union = type_info[:polymorphic] |> Enum.map_join(" | ", &to_string/1)
         {type_union, []}
 
+      # Handle new unified syntax: list: SerializerModule
+      # When list contains a module, treat it as a list of serializers
+      is_atom(type_info[:list]) && is_module?(type_info[:list]) ->
+        serializer = type_info[:list]
+        type_name = interface_name(serializer)
+        module_name = serializer |> Module.split() |> List.last()
+        # Build Array<TypeName> and add import
+        base_type = "Array<#{type_name}>"
+        type = if type_info[:nullable], do: "#{base_type} | null", else: base_type
+        {type, [{type_name, module_name}]}
+
       # Handle new unified syntax: list: [enum: [...]]
       # TypeMapper returns the complete type already, so don't apply modifiers
       is_list(type_info[:list]) && Keyword.has_key?(type_info[:list], :enum) ->
@@ -163,6 +174,19 @@ defmodule NbTs.Interface do
         {apply_modifiers(base_type, type_info), []}
     end
   end
+
+  # Helper to check if an atom is a module
+  defp is_module?(atom) when is_atom(atom) do
+    # Check if it's a valid module by trying to get module info
+    # Atoms like :string, :number, :boolean are not modules
+    # Module atoms like MyApp.Serializer are modules
+    case Atom.to_string(atom) do
+      "Elixir." <> _ -> true
+      _ -> false
+    end
+  end
+
+  defp is_module?(_), do: false
 
   defp apply_modifiers(base_type, type_info) do
     type = if type_info[:list], do: "Array<#{base_type}>", else: base_type
