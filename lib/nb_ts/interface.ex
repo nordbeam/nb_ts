@@ -294,29 +294,20 @@ defmodule NbTs.Interface do
         []
       end
 
-    # Get form definitions from the controller
-    forms =
-      if function_exported?(controller_module, :__inertia_forms__, 0) do
-        controller_module.__inertia_forms__()
-      else
-        %{}
-      end
-
     # Generate interface for each page
+    # Forms are already stored per-page in page_config.forms
     results =
       pages
       |> Enum.map(fn {page_name, page_config} ->
-        # Add forms to page_config
-        page_config_with_forms = Map.put(page_config, :forms, forms)
-
         typescript =
           generate_page_interface(
             page_name,
-            page_config_with_forms,
+            page_config,
             shared_modules,
             inline_shared_props
           )
 
+        # Return page_config with its own forms intact
         {page_name, page_config, typescript}
       end)
 

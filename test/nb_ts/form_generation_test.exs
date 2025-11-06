@@ -328,7 +328,13 @@ defmodule NbTs.FormGenerationTest do
           %{
             users_new: %{
               component: "Users/New",
-              props: []
+              props: [],
+              forms: %{
+                user: [
+                  {:name, :string, []},
+                  {:email, :string, []}
+                ]
+              }
             }
           }
         end
@@ -359,11 +365,21 @@ defmodule NbTs.FormGenerationTest do
           %{
             users_new: %{
               component: "Users/New",
-              props: []
+              props: [],
+              forms: %{
+                user: [
+                  {:name, :string, []}
+                ]
+              }
             },
             users_edit: %{
               component: "Users/Edit",
-              props: []
+              props: [],
+              forms: %{
+                user: [
+                  {:name, :string, []}
+                ]
+              }
             }
           }
         end
@@ -399,7 +415,14 @@ defmodule NbTs.FormGenerationTest do
           %{
             users_create: %{
               component: "Users/Create",
-              props: [%{name: :roles, type: :list, opts: []}]
+              props: [%{name: :roles, type: :list, opts: []}],
+              forms: %{
+                user: [
+                  {:name, :string, []},
+                  {:email, :string, []},
+                  {:admin, :boolean, [optional: true]}
+                ]
+              }
             }
           }
         end
@@ -417,7 +440,14 @@ defmodule NbTs.FormGenerationTest do
         def inertia_page_config(:users_create) do
           %{
             component: "Users/Create",
-            props: [%{name: :roles, type: :list, opts: []}]
+            props: [%{name: :roles, type: :list, opts: []}],
+            forms: %{
+              user: [
+                {:name, :string, []},
+                {:email, :string, []},
+                {:admin, :boolean, [optional: true]}
+              ]
+            }
           }
         end
 

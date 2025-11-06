@@ -93,21 +93,31 @@ defmodule NbTs.IndexManager do
   @doc """
   Parse an export line from index.ts.
 
-  Returns a list with a single {name, filename} tuple, or empty list if invalid.
+  Returns a list of {name, filename} tuples (one for each interface in the export).
 
   ## Examples
 
       iex> parse_export_line(~s(export type { User } from "./User";))
       [{"User", "User"}]
 
+      iex> parse_export_line(~s(export type { User, Post } from "./Types";))
+      [{"User", "Types"}, {"Post", "Types"}]
+
       iex> parse_export_line("// comment")
       []
   """
   def parse_export_line(line) do
-    # Parse: export type { InterfaceName } from "./InterfaceName";
-    case Regex.run(~r/export type \{ (\w+) \} from "\.\/(.+)";/, line) do
-      [_, name, filename] -> [{name, filename}]
-      nil -> []
+    # Parse: export type { Name1, Name2, ... } from "./filename";
+    case Regex.run(~r/export type \{ (.+?) \} from "\.\/(.+)";/, line) do
+      [_, names_str, filename] ->
+        # Split the interface names by comma and trim whitespace
+        names_str
+        |> String.split(",")
+        |> Enum.map(&String.trim/1)
+        |> Enum.map(fn name -> {name, filename} end)
+
+      nil ->
+        []
     end
   end
 
@@ -142,11 +152,17 @@ defmodule NbTs.IndexManager do
   end
 
   defp write_index(index_path, exports_map) do
+    # Group interfaces by filename so multiple interfaces from the same file
+    # are exported together (e.g., SpacesNewProps and SpacesNewFormInputs)
     content =
       exports_map
-      |> Enum.sort_by(fn {name, _} -> name end)
-      |> Enum.map_join("\n", fn {name, filename} ->
-        ~s(export type { #{name} } from "./#{filename}";)
+      |> Enum.group_by(fn {_name, filename} -> filename end, fn {name, _filename} -> name end)
+      |> Enum.sort_by(fn {filename, _names} -> filename end)
+      |> Enum.map_join("\n", fn {filename, names} ->
+        # Sort interface names alphabetically for consistent output
+        sorted_names = Enum.sort(names)
+        names_str = Enum.join(sorted_names, ", ")
+        ~s(export type { #{names_str} } from "./#{filename}";)
       end)
 
     File.write!(index_path, content <> "\n")

@@ -210,28 +210,14 @@ defmodule NbTs.Generator do
               []
             end
 
-          # Check existence first, then generate
-          page_results_with_status =
-            if function_exported?(controller, :__inertia_pages__, 0) do
-              controller.__inertia_pages__()
-              |> Enum.map(fn {_page_name, page_config} ->
-                component_name = page_config.component
-                interface_name = component_name_to_page_interface(component_name)
-                filename = "#{interface_name}.ts"
-                filepath = Path.join(output_dir, filename)
-                {interface_name, filename, File.exists?(filepath)}
-              end)
-            else
-              []
-            end
-
-          # Now do the actual generation
+          # Now do the actual generation (this returns both Props and FormInputs)
           page_props = generate_page_props(controller, pages, output_dir, false)
 
-          # Combine with status info
-          Enum.zip(page_props, page_results_with_status)
-          |> Enum.map(fn {{interface_name, filename}, {_, _, existed?}} ->
-            status = if existed?, do: :updated, else: :added
+          # Map to results with status based on file existence
+          page_props
+          |> Enum.map(fn {interface_name, filename} ->
+            filepath = Path.join(output_dir, filename)
+            status = if File.exists?(filepath), do: :updated, else: :added
             {status, interface_name, filename}
           end)
         rescue
@@ -519,7 +505,7 @@ defmodule NbTs.Generator do
   defp generate_page_props(controller, _pages, output_dir, verbose?) do
     page_results = Interface.generate_page_types(controller, as_list: true)
 
-    Enum.map(page_results, fn {_page_name, page_config, typescript} ->
+    Enum.flat_map(page_results, fn {_page_name, page_config, typescript} ->
       component_name = page_config.component
       interface_name = component_name_to_page_interface(component_name)
 
@@ -532,18 +518,35 @@ defmodule NbTs.Generator do
         IO.puts("  Generated #{filename}")
       end
 
-      {interface_name, filename}
+      # Check if page has forms and generate FormInputs interface export
+      forms = Map.get(page_config, :forms, %{})
+      has_forms? = forms != nil and forms != %{}
+
+      if has_forms? do
+        # Return both Props and FormInputs interface exports
+        form_inputs_interface_name = component_name_to_form_inputs_interface(component_name)
+        [{interface_name, filename}, {form_inputs_interface_name, filename}]
+      else
+        # Only return Props interface export
+        [{interface_name, filename}]
+      end
     end)
   end
 
   defp generate_index(interfaces, output_dir) do
+    # Group interfaces by filename so multiple interfaces from the same file
+    # are exported together (e.g., SpacesNewProps and SpacesNewFormInputs)
     exports =
       interfaces
-      |> Enum.sort_by(fn {name, _} -> name end)
-      |> Enum.map_join("\n", fn {name, filename} ->
+      |> Enum.group_by(fn {_name, filename} -> filename end, fn {name, _filename} -> name end)
+      |> Enum.sort_by(fn {filename, _names} -> filename end)
+      |> Enum.map_join("\n", fn {filename, names} ->
         # Strip .ts extension from filename for the import path
         filename_without_ext = String.replace_suffix(filename, ".ts", "")
-        ~s(export type { #{name} } from "./#{filename_without_ext}";)
+        # Sort interface names alphabetically for consistent output
+        sorted_names = Enum.sort(names)
+        names_str = Enum.join(sorted_names, ", ")
+        ~s(export type { #{names_str} } from "./#{filename_without_ext}";)
       end)
 
     index_path = Path.join(output_dir, "index.ts")
@@ -555,6 +558,13 @@ defmodule NbTs.Generator do
     |> String.replace("/", "")
     |> String.replace(" ", "")
     |> Kernel.<>("Props")
+  end
+
+  defp component_name_to_form_inputs_interface(component_name) do
+    component_name
+    |> String.replace("/", "")
+    |> String.replace(" ", "")
+    |> Kernel.<>("FormInputs")
   end
 
   defp get_app_name do
