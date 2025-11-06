@@ -615,6 +615,406 @@ defmodule NbTs.FormGenerationTest do
     end
   end
 
+  describe "nested list fields" do
+    test "generates array type for nested list fields" do
+      defmodule NestedListController do
+        def __inertia_pages__ do
+          %{
+            spaces_new: %{
+              component: "Spaces/New",
+              props: []
+            }
+          }
+        end
+
+        def __inertia_forms__ do
+          %{
+            space: [
+              {:name, :string, []},
+              {:questions, :list, [],
+               [
+                 {:question_text, :string, []},
+                 {:required, :boolean, []},
+                 {:position, :integer, []}
+               ]}
+            ]
+          }
+        end
+
+        def __inertia_shared_modules__, do: []
+      end
+
+      forms = NestedListController.__inertia_forms__()
+
+      page_config = %{
+        component: "Spaces/New",
+        props: [],
+        forms: forms
+      }
+
+      typescript = Interface.generate_page_interface(:spaces_new, page_config, [], [])
+
+      # Should have FormInputs interface
+      assert typescript =~ "export interface SpacesNewFormInputs"
+
+      # Should have space form
+      assert typescript =~ "space:"
+
+      # Should have name field
+      assert typescript =~ ~r/name:\s*string;/
+
+      # Should have questions as array of objects
+      assert typescript =~ ~r/questions:\s*Array<\{/
+      assert typescript =~ ~r/questionText:\s*string;/
+      assert typescript =~ ~r/required:\s*boolean;/
+      assert typescript =~ ~r/position:\s*number;/
+    end
+
+    test "generates optional nested list fields" do
+      defmodule OptionalNestedListController do
+        def __inertia_pages__ do
+          %{
+            test: %{
+              component: "Test",
+              props: []
+            }
+          }
+        end
+
+        def __inertia_forms__ do
+          %{
+            data: [
+              {:name, :string, []},
+              {:items, :list, [optional: true],
+               [
+                 {:label, :string, []}
+               ]}
+            ]
+          }
+        end
+
+        def __inertia_shared_modules__, do: []
+      end
+
+      forms = OptionalNestedListController.__inertia_forms__()
+
+      page_config = %{
+        component: "Test",
+        props: [],
+        forms: forms
+      }
+
+      typescript = Interface.generate_page_interface(:test, page_config, [], [])
+
+      # Optional list should have ?
+      assert typescript =~ ~r/items\?:\s*Array<\{/
+      assert typescript =~ ~r/label:\s*string;/
+    end
+
+    test "generates nested list with optional inner fields" do
+      defmodule NestedOptionalFieldsController do
+        def __inertia_pages__ do
+          %{
+            test: %{
+              component: "Test",
+              props: []
+            }
+          }
+        end
+
+        def __inertia_forms__ do
+          %{
+            data: [
+              {:items, :list, [],
+               [
+                 {:name, :string, []},
+                 {:description, :string, [optional: true]},
+                 {:required, :boolean, []}
+               ]}
+            ]
+          }
+        end
+
+        def __inertia_shared_modules__, do: []
+      end
+
+      forms = NestedOptionalFieldsController.__inertia_forms__()
+
+      page_config = %{
+        component: "Test",
+        props: [],
+        forms: forms
+      }
+
+      typescript = Interface.generate_page_interface(:test, page_config, [], [])
+
+      # Should have array with nested object
+      assert typescript =~ ~r/items:\s*Array<\{/
+
+      # Required inner fields should not have ?
+      assert typescript =~ ~r/name:\s*string;/
+      assert typescript =~ ~r/required:\s*boolean;/
+
+      # Optional inner fields should have ?
+      assert typescript =~ ~r/description\?:\s*string;/
+    end
+
+    test "generates multiple nested list fields" do
+      defmodule MultipleNestedListsController do
+        def __inertia_pages__ do
+          %{
+            test: %{
+              component: "Test",
+              props: []
+            }
+          }
+        end
+
+        def __inertia_forms__ do
+          %{
+            data: [
+              {:questions, :list, [],
+               [
+                 {:text, :string, []}
+               ]},
+              {:answers, :list, [],
+               [
+                 {:value, :string, []}
+               ]}
+            ]
+          }
+        end
+
+        def __inertia_shared_modules__, do: []
+      end
+
+      forms = MultipleNestedListsController.__inertia_forms__()
+
+      page_config = %{
+        component: "Test",
+        props: [],
+        forms: forms
+      }
+
+      typescript = Interface.generate_page_interface(:test, page_config, [], [])
+
+      # Should have both arrays
+      assert typescript =~ ~r/questions:\s*Array<\{/
+      assert typescript =~ ~r/text:\s*string;/
+
+      assert typescript =~ ~r/answers:\s*Array<\{/
+      assert typescript =~ ~r/value:\s*string;/
+    end
+
+    test "handles nested list with all basic types" do
+      defmodule NestedAllTypesController do
+        def __inertia_pages__ do
+          %{
+            test: %{
+              component: "Test",
+              props: []
+            }
+          }
+        end
+
+        def __inertia_forms__ do
+          %{
+            data: [
+              {:items, :list, [],
+               [
+                 {:str, :string, []},
+                 {:num, :number, []},
+                 {:int, :integer, []},
+                 {:bool, :boolean, []},
+                 {:dt, :datetime, []}
+               ]}
+            ]
+          }
+        end
+
+        def __inertia_shared_modules__, do: []
+      end
+
+      forms = NestedAllTypesController.__inertia_forms__()
+
+      page_config = %{
+        component: "Test",
+        props: [],
+        forms: forms
+      }
+
+      typescript = Interface.generate_page_interface(:test, page_config, [], [])
+
+      # Check all type mappings inside nested array
+      assert typescript =~ ~r/str:\s*string;/
+      assert typescript =~ ~r/num:\s*number;/
+      assert typescript =~ ~r/int:\s*number;/
+      assert typescript =~ ~r/bool:\s*boolean;/
+      assert typescript =~ ~r/dt:\s*string;/
+    end
+  end
+
+  describe "snake_case_params config for form inputs" do
+    test "respects snake_case_params: false config" do
+      # Set config to false - frontend should send snake_case
+      Application.put_env(:nb_inertia, :snake_case_params, false)
+
+      on_exit(fn ->
+        # Restore default
+        Application.delete_env(:nb_inertia, :snake_case_params)
+      end)
+
+      defmodule NoCamelizeController do
+        def __inertia_pages__ do
+          %{
+            test: %{
+              component: "Test",
+              props: []
+            }
+          }
+        end
+
+        def __inertia_forms__ do
+          %{
+            user_profile: [
+              {:first_name, :string, []},
+              {:last_name, :string, []},
+              {:date_of_birth, :date, [optional: true]}
+            ]
+          }
+        end
+
+        def __inertia_shared_modules__, do: []
+      end
+
+      forms = NoCamelizeController.__inertia_forms__()
+
+      page_config = %{
+        component: "Test",
+        props: [],
+        forms: forms
+      }
+
+      typescript = Interface.generate_page_interface(:test, page_config, [], [])
+
+      # Should NOT camelCase - keep snake_case
+      assert typescript =~ "user_profile:"
+      assert typescript =~ "first_name:"
+      assert typescript =~ "last_name:"
+      assert typescript =~ "date_of_birth?:"
+
+      # Should NOT have camelCase versions
+      refute typescript =~ "userProfile"
+      refute typescript =~ "firstName"
+      refute typescript =~ "lastName"
+      refute typescript =~ "dateOfBirth"
+    end
+
+    test "respects snake_case_params: false with nested list fields" do
+      # Set config to false - frontend should send snake_case
+      Application.put_env(:nb_inertia, :snake_case_params, false)
+
+      on_exit(fn ->
+        # Restore default
+        Application.delete_env(:nb_inertia, :snake_case_params)
+      end)
+
+      defmodule NoCamelizeNestedController do
+        def __inertia_pages__ do
+          %{
+            test: %{
+              component: "Test",
+              props: []
+            }
+          }
+        end
+
+        def __inertia_forms__ do
+          %{
+            space_data: [
+              {:space_name, :string, []},
+              {:question_list, :list, [],
+               [
+                 {:question_text, :string, []},
+                 {:is_required, :boolean, []}
+               ]}
+            ]
+          }
+        end
+
+        def __inertia_shared_modules__, do: []
+      end
+
+      forms = NoCamelizeNestedController.__inertia_forms__()
+
+      page_config = %{
+        component: "Test",
+        props: [],
+        forms: forms
+      }
+
+      typescript = Interface.generate_page_interface(:test, page_config, [], [])
+
+      # Form name should NOT be camelized
+      assert typescript =~ "space_data:"
+
+      # Outer field names should NOT be camelized
+      assert typescript =~ "space_name:"
+      assert typescript =~ "question_list:"
+
+      # Nested field names should NOT be camelized
+      assert typescript =~ "question_text:"
+      assert typescript =~ "is_required:"
+
+      # Should NOT have camelCase versions
+      refute typescript =~ "spaceData"
+      refute typescript =~ "spaceName"
+      refute typescript =~ "questionList"
+      refute typescript =~ "questionText"
+      refute typescript =~ "isRequired"
+    end
+
+    test "defaults to snake_case_params: true (generates camelCase) when not configured" do
+      # Ensure no config is set
+      Application.delete_env(:nb_inertia, :snake_case_params)
+
+      defmodule DefaultCamelizeController do
+        def __inertia_pages__ do
+          %{
+            test: %{
+              component: "Test",
+              props: []
+            }
+          }
+        end
+
+        def __inertia_forms__ do
+          %{
+            user_data: [
+              {:first_name, :string, []}
+            ]
+          }
+        end
+
+        def __inertia_shared_modules__, do: []
+      end
+
+      forms = DefaultCamelizeController.__inertia_forms__()
+
+      page_config = %{
+        component: "Test",
+        props: [],
+        forms: forms
+      }
+
+      typescript = Interface.generate_page_interface(:test, page_config, [], [])
+
+      # Should default to camelCase
+      assert typescript =~ "userData:"
+      assert typescript =~ "firstName:"
+    end
+  end
+
   describe "type mapping edge cases" do
     test "handles unknown type with fallback" do
       defmodule UnknownTypeController do

@@ -613,18 +613,25 @@ defmodule NbTs.Interface do
   Generate nested TypeScript object types for all forms.
 
   Takes a map of form definitions and returns formatted TypeScript fields.
+  Respects the `:snake_case_params` config from `:nb_inertia` (defaults to true).
+
+  When `snake_case_params: true`, generates camelCase TypeScript (frontend sends camelCase, backend converts).
+  When `snake_case_params: false`, generates snake_case TypeScript (frontend sends snake_case, no conversion).
   """
   def generate_form_fields(forms) when is_map(forms) do
+    camelize? = should_camelize_form_inputs?()
+
     forms
     |> Enum.map(fn {form_name, fields} ->
-      # Camelize the form name
-      camelized_form_name = camelize_atom(form_name)
+      # Conditionally camelize the form name
+      form_field_name =
+        if camelize?, do: camelize_atom(form_name), else: Atom.to_string(form_name)
 
       # Generate field definitions for this form
-      field_defs = generate_field_definitions(fields)
+      field_defs = generate_field_definitions(fields, camelize?)
 
       # Return formatted form field
-      "  #{camelized_form_name}: {\n#{field_defs}\n  };"
+      "  #{form_field_name}: {\n#{field_defs}\n  };"
     end)
     |> Enum.join("\n")
   end
@@ -632,13 +639,52 @@ defmodule NbTs.Interface do
   @doc """
   Generate field definitions with proper TypeScript types and optional markers.
 
-  Takes a list of field tuples {name, type, opts} and returns formatted TypeScript fields.
+  Takes a list of field tuples and returns formatted TypeScript fields.
+  Supports both regular fields {name, type, opts} and nested list fields {name, :list, opts, nested_fields}.
   """
-  def generate_field_definitions(fields) when is_list(fields) do
+  def generate_field_definitions(fields, camelize? \\ true) when is_list(fields) do
+    fields
+    |> Enum.map(fn field ->
+      case field do
+        # Handle nested list fields (4-tuple)
+        {name, :list, opts, nested_fields} when is_list(nested_fields) ->
+          # Conditionally camelize field name
+          field_name = if camelize?, do: camelize_atom(name), else: Atom.to_string(name)
+
+          # Check if field is optional
+          optional_marker = if Keyword.get(opts, :optional, false), do: "?", else: ""
+
+          # Generate nested object type
+          nested_definitions = generate_nested_field_definitions(nested_fields, camelize?)
+
+          # Format as Array<{ ... }>
+          "    #{field_name}#{optional_marker}: Array<{\n#{nested_definitions}\n    }>;"
+
+        # Handle regular fields (3-tuple)
+        {name, type, opts} ->
+          # Conditionally camelize field name
+          field_name = if camelize?, do: camelize_atom(name), else: Atom.to_string(name)
+
+          # Map Elixir type to TypeScript
+          ts_type = elixir_type_to_typescript(type)
+
+          # Check if field is optional
+          optional_marker = if Keyword.get(opts, :optional, false), do: "?", else: ""
+
+          # Format field
+          "    #{field_name}#{optional_marker}: #{ts_type};"
+      end
+    end)
+    |> Enum.join("\n")
+  end
+
+  # Generate field definitions for nested fields within an array.
+  # Similar to generate_field_definitions but with deeper indentation.
+  defp generate_nested_field_definitions(fields, camelize?) when is_list(fields) do
     fields
     |> Enum.map(fn {name, type, opts} ->
-      # Camelize field name
-      camelized_name = camelize_atom(name)
+      # Conditionally camelize field name
+      field_name = if camelize?, do: camelize_atom(name), else: Atom.to_string(name)
 
       # Map Elixir type to TypeScript
       ts_type = elixir_type_to_typescript(type)
@@ -646,10 +692,17 @@ defmodule NbTs.Interface do
       # Check if field is optional
       optional_marker = if Keyword.get(opts, :optional, false), do: "?", else: ""
 
-      # Format field
-      "    #{camelized_name}#{optional_marker}: #{ts_type};"
+      # Format field with deeper indentation (6 spaces for nested)
+      "      #{field_name}#{optional_marker}: #{ts_type};"
     end)
     |> Enum.join("\n")
+  end
+
+  # Check if form inputs should be camelized based on snake_case_params config
+  # When snake_case_params is true (default), frontend sends camelCase and backend converts to snake_case
+  # When snake_case_params is false, frontend sends snake_case and backend doesn't convert
+  defp should_camelize_form_inputs? do
+    Application.get_env(:nb_inertia, :snake_case_params, true)
   end
 
   @doc """
