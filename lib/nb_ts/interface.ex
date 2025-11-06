@@ -514,43 +514,84 @@ defmodule NbTs.Interface do
     defer = Keyword.get(opts, :defer, false)
     nullable = Keyword.get(opts, :nullable, false)
 
-    # Determine the TypeScript type and imports
-    {ts_type, imports} =
+    # Check for unified syntax in opts first
+    {ts_type, imports, already_has_list_modifier} =
       cond do
+        # Unified syntax: list: SerializerModule
+        # e.g., prop(:users, list: UserSerializer)
+        Keyword.has_key?(opts, :list) && is_atom(Keyword.get(opts, :list)) &&
+            is_module?(Keyword.get(opts, :list)) ->
+          serializer = Keyword.get(opts, :list)
+          type_name = interface_name(serializer)
+          module_name = serializer |> Module.split() |> List.last()
+          {"#{type_name}[]", [{type_name, module_name}], true}
+
+        # Unified syntax: list: :string (or other primitive)
+        # e.g., prop(:tags, list: :string)
+        Keyword.has_key?(opts, :list) &&
+            is_atom(Keyword.get(opts, :list)) ->
+          primitive = Keyword.get(opts, :list)
+          base_type = elixir_type_to_typescript(primitive)
+          {"#{base_type}[]", [], true}
+
+        # Unified syntax: list: [enum: [...]]
+        # e.g., prop(:roles, list: [enum: ["admin", "user"]])
+        Keyword.has_key?(opts, :list) && is_list(Keyword.get(opts, :list)) &&
+            Keyword.has_key?(Keyword.get(opts, :list), :enum) ->
+          enum_values = Keyword.get(opts, :list) |> Keyword.get(:enum)
+          enum_union = enum_values |> Enum.map(&inspect/1) |> Enum.join(" | ")
+          {"(#{enum_union})[]", [], true}
+
+        # Unified syntax: enum: [...]
+        # e.g., prop(:status, enum: ["active", "inactive"])
+        Keyword.has_key?(opts, :enum) ->
+          enum_values = Keyword.get(opts, :enum)
+          enum_union = enum_values |> Enum.map(&inspect/1) |> Enum.join(" | ")
+          {enum_union, [], false}
+
         # Check if type is in opts (e.g., prop(:name, type: "...", nullable: true))
         Keyword.has_key?(opts, :type) ->
           type = Keyword.get(opts, :type)
 
           # Check if type is a ~TS sigil (returns {:typescript_validated, "..."})
-          case type do
-            {:typescript_validated, ts_string} when is_binary(ts_string) ->
-              {ts_string, []}
+          ts_type =
+            case type do
+              {:typescript_validated, ts_string} when is_binary(ts_string) ->
+                ts_string
 
-            type when is_binary(type) ->
-              {type, []}
+              type when is_binary(type) ->
+                type
 
-            _ ->
-              {elixir_type_to_typescript(type), []}
-          end
+              _ ->
+                elixir_type_to_typescript(type)
+            end
+
+          {ts_type, [], false}
 
         # Has a serializer module
         Map.has_key?(prop_config, :serializer) ->
           serializer = prop_config.serializer
 
-          cond do
-            # Check if it's a custom type string
-            is_binary(serializer) ->
-              {serializer, []}
+          ts_type =
+            cond do
+              # Check if it's a custom type string
+              is_binary(serializer) ->
+                {serializer, []}
 
-            # Check if it's a primitive type
-            serializer in [:string, :integer, :float, :boolean, :number, :map, :list, :datetime] ->
-              {elixir_type_to_typescript(serializer), []}
+              # Check if it's a primitive type
+              serializer in [:string, :integer, :float, :boolean, :number, :map, :list, :datetime] ->
+                {elixir_type_to_typescript(serializer), []}
 
-            # It's a module - extract interface name
-            true ->
-              type_name = interface_name(serializer)
-              module_name = serializer |> Module.split() |> List.last()
-              {type_name, [{type_name, module_name}]}
+              # It's a module - extract interface name
+              true ->
+                type_name = interface_name(serializer)
+                module_name = serializer |> Module.split() |> List.last()
+                {type_name, [{type_name, module_name}]}
+            end
+
+          case ts_type do
+            {type, imports} -> {type, imports, false}
+            type when is_binary(type) -> {type, [], false}
           end
 
         # Has a primitive type
@@ -558,25 +599,33 @@ defmodule NbTs.Interface do
           type = prop_config.type
 
           # Check if type is a ~TS sigil (returns {:typescript_validated, "..."})
-          case type do
-            {:typescript_validated, ts_string} when is_binary(ts_string) ->
-              {ts_string, []}
+          ts_type =
+            case type do
+              {:typescript_validated, ts_string} when is_binary(ts_string) ->
+                ts_string
 
-            type when is_binary(type) ->
-              {type, []}
+              type when is_binary(type) ->
+                type
 
-            _ ->
-              {elixir_type_to_typescript(type), []}
-          end
+              _ ->
+                elixir_type_to_typescript(type)
+            end
+
+          {ts_type, [], false}
 
         # Default to any
         true ->
-          {"any", []}
+          {"any", [], false}
       end
 
-    # Handle list types
-    list = Keyword.get(opts, :list, false)
-    ts_type = if list, do: "#{ts_type}[]", else: ts_type
+    # Handle old-style list modifier (only if not already handled by unified syntax)
+    # This maintains backward compatibility with prop(:users, UserSerializer, list: true)
+    ts_type =
+      if !already_has_list_modifier && Keyword.get(opts, :list, false) == true do
+        "#{ts_type}[]"
+      else
+        ts_type
+      end
 
     # Apply nullable modifier if needed
     ts_type = if nullable, do: "#{ts_type} | null", else: ts_type
@@ -592,6 +641,8 @@ defmodule NbTs.Interface do
 
     {field, imports}
   end
+
+  # is_module?/1 helper is defined earlier in the file (around line 179)
 
   defp elixir_type_to_typescript(type) do
     case type do
