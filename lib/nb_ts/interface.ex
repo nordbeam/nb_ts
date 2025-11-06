@@ -660,16 +660,52 @@ defmodule NbTs.Interface do
           # Format as Array<{ ... }>
           "    #{field_name}#{optional_marker}: Array<{\n#{nested_definitions}\n    }>;"
 
-        # Handle regular fields (3-tuple)
+        # Handle fields with options (3-tuple)
         {name, type, opts} ->
           # Conditionally camelize field name
           field_name = if camelize?, do: camelize_atom(name), else: Atom.to_string(name)
 
-          # Map Elixir type to TypeScript
-          ts_type = elixir_type_to_typescript(type)
-
           # Check if field is optional
           optional_marker = if Keyword.get(opts, :optional, false), do: "?", else: ""
+
+          # Determine TypeScript type based on options
+          ts_type =
+            cond do
+              # Handle enum: ["value1", "value2"]
+              Keyword.has_key?(opts, :enum) ->
+                enum_values = Keyword.get(opts, :enum)
+
+                enum_values
+                |> Enum.map(&"\"#{&1}\"")
+                |> Enum.join(" | ")
+
+              # Handle list: :string
+              Keyword.has_key?(opts, :list) && is_atom(Keyword.get(opts, :list)) ->
+                inner_type = Keyword.get(opts, :list)
+                inner_ts_type = elixir_type_to_typescript(inner_type)
+                "#{inner_ts_type}[]"
+
+              # Handle list: [enum: [...]]
+              Keyword.has_key?(opts, :list) && is_list(Keyword.get(opts, :list)) ->
+                list_opts = Keyword.get(opts, :list)
+
+                if Keyword.has_key?(list_opts, :enum) do
+                  enum_values = Keyword.get(list_opts, :enum)
+
+                  enum_union =
+                    enum_values
+                    |> Enum.map(&"\"#{&1}\"")
+                    |> Enum.join(" | ")
+
+                  "(#{enum_union})[]"
+                else
+                  "any[]"
+                end
+
+              # Regular type
+              true ->
+                elixir_type_to_typescript(type)
+            end
 
           # Format field
           "    #{field_name}#{optional_marker}: #{ts_type};"

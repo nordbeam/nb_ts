@@ -1094,5 +1094,366 @@ defmodule NbTs.FormGenerationTest do
       # Ideally should have comments (optional enhancement)
       # assert typescript =~ "ISO"
     end
+
+    test "generates typed arrays for list: type syntax" do
+      defmodule TypedListController do
+        def __inertia_pages__ do
+          %{
+            test: %{
+              component: "Test",
+              props: []
+            }
+          }
+        end
+
+        def __inertia_forms__ do
+          %{
+            config: [
+              {:allowed_origins, :any, [list: :string, optional: true]},
+              {:port_numbers, :any, [list: :integer]},
+              {:feature_flags, :any, [list: :boolean]}
+            ]
+          }
+        end
+
+        def __inertia_shared_modules__, do: []
+      end
+
+      # Extract forms from controller
+      forms = TypedListController.__inertia_forms__()
+
+      page_config = %{
+        component: "Test",
+        props: [],
+        forms: forms
+      }
+
+      typescript = Interface.generate_page_interface(:test, page_config, [], [])
+
+      # Should have typed arrays
+      assert typescript =~ ~r/allowedOrigins\?:\s*string\[\];/
+      assert typescript =~ ~r/portNumbers:\s*number\[\];/
+      assert typescript =~ ~r/featureFlags:\s*boolean\[\];/
+    end
+
+    test "supports all basic types in typed lists" do
+      defmodule AllTypedListsController do
+        def __inertia_pages__ do
+          %{
+            test: %{
+              component: "Test",
+              props: []
+            }
+          }
+        end
+
+        def __inertia_forms__ do
+          %{
+            data: [
+              {:strings, :any, [list: :string]},
+              {:numbers, :any, [list: :number]},
+              {:integers, :any, [list: :integer]},
+              {:booleans, :any, [list: :boolean]},
+              {:dates, :any, [list: :date]},
+              {:datetimes, :any, [list: :datetime]}
+            ]
+          }
+        end
+
+        def __inertia_shared_modules__, do: []
+      end
+
+      # Extract forms from controller
+      forms = AllTypedListsController.__inertia_forms__()
+
+      page_config = %{
+        component: "Test",
+        props: [],
+        forms: forms
+      }
+
+      typescript = Interface.generate_page_interface(:test, page_config, [], [])
+
+      # All should be typed arrays
+      assert typescript =~ ~r/strings:\s*string\[\];/
+      assert typescript =~ ~r/numbers:\s*number\[\];/
+      assert typescript =~ ~r/integers:\s*number\[\];/
+      assert typescript =~ ~r/booleans:\s*boolean\[\];/
+      assert typescript =~ ~r/dates:\s*string\[\];/
+      assert typescript =~ ~r/datetimes:\s*string\[\];/
+    end
+
+    test "respects snake_case_params config with typed lists" do
+      # Set snake_case_params to false
+      Application.put_env(:nb_inertia, :snake_case_params, false)
+
+      on_exit(fn ->
+        Application.delete_env(:nb_inertia, :snake_case_params)
+      end)
+
+      defmodule SnakeCaseTypedListController do
+        def __inertia_pages__ do
+          %{
+            test: %{
+              component: "Test",
+              props: []
+            }
+          }
+        end
+
+        def __inertia_forms__ do
+          %{
+            config: [
+              {:allowed_origins, :any, [list: :string]},
+              {:port_numbers, :any, [list: :integer]}
+            ]
+          }
+        end
+
+        def __inertia_shared_modules__, do: []
+      end
+
+      # Extract forms from controller
+      forms = SnakeCaseTypedListController.__inertia_forms__()
+
+      page_config = %{
+        component: "Test",
+        props: [],
+        forms: forms
+      }
+
+      typescript = Interface.generate_page_interface(:test, page_config, [], [])
+
+      # Should generate snake_case TypeScript
+      assert typescript =~ ~r/allowed_origins:\s*string\[\];/
+      assert typescript =~ ~r/port_numbers:\s*number\[\];/
+      # Should NOT have camelCase
+      refute typescript =~ "allowedOrigins"
+      refute typescript =~ "portNumbers"
+    end
+
+    test "mixes typed lists with nested list fields" do
+      defmodule MixedListTypesController do
+        def __inertia_pages__ do
+          %{
+            test: %{
+              component: "Test",
+              props: []
+            }
+          }
+        end
+
+        def __inertia_forms__ do
+          %{
+            config: [
+              {:name, :string, []},
+              {:tags, :any, [list: :string]},
+              {:questions, :list, [],
+               [
+                 {:text, :string, []},
+                 {:required, :boolean, []}
+               ]},
+              {:ports, :any, [list: :integer, optional: true]}
+            ]
+          }
+        end
+
+        def __inertia_shared_modules__, do: []
+      end
+
+      # Extract forms from controller
+      forms = MixedListTypesController.__inertia_forms__()
+
+      page_config = %{
+        component: "Test",
+        props: [],
+        forms: forms
+      }
+
+      typescript = Interface.generate_page_interface(:test, page_config, [], [])
+
+      # Should have regular field
+      assert typescript =~ ~r/name:\s*string;/
+      # Should have typed array
+      assert typescript =~ ~r/tags:\s*string\[\];/
+      # Should have nested object array
+      assert typescript =~ ~r/questions:\s*Array<\{/
+      assert typescript =~ ~r/text:\s*string;/
+      assert typescript =~ ~r/required:\s*boolean;/
+      # Should have optional typed array
+      assert typescript =~ ~r/ports\?:\s*number\[\];/
+    end
+  end
+
+  describe "generate_page_interface/4 with enum fields" do
+    test "generates union types for enum fields" do
+      defmodule EnumFieldsController do
+        def __inertia_pages__ do
+          %{
+            test: %{
+              component: "Test",
+              props: []
+            }
+          }
+        end
+
+        def __inertia_forms__ do
+          %{
+            config: [
+              {:status, :any, [enum: ["active", "inactive", "pending"]]},
+              {:priority, :any, [enum: ["low", "medium", "high"], optional: true]}
+            ]
+          }
+        end
+
+        def __inertia_shared_modules__, do: []
+      end
+
+      # Extract forms from controller
+      forms = EnumFieldsController.__inertia_forms__()
+
+      page_config = %{
+        component: "Test",
+        props: [],
+        forms: forms
+      }
+
+      typescript = Interface.generate_page_interface(:test, page_config, [], [])
+
+      # Should have union types
+      assert typescript =~ ~r/status:\s*"active"\s*\|\s*"inactive"\s*\|\s*"pending";/
+      assert typescript =~ ~r/priority\?:\s*"low"\s*\|\s*"medium"\s*\|\s*"high";/
+    end
+
+    test "generates enum arrays for list of enums" do
+      defmodule EnumArraysController do
+        def __inertia_pages__ do
+          %{
+            test: %{
+              component: "Test",
+              props: []
+            }
+          }
+        end
+
+        def __inertia_forms__ do
+          %{
+            config: [
+              {:statuses, :any, [list: [enum: ["active", "inactive"]]]},
+              {:tags, :any, [list: [enum: ["bug", "feature", "enhancement"]], optional: true]}
+            ]
+          }
+        end
+
+        def __inertia_shared_modules__, do: []
+      end
+
+      # Extract forms from controller
+      forms = EnumArraysController.__inertia_forms__()
+
+      page_config = %{
+        component: "Test",
+        props: [],
+        forms: forms
+      }
+
+      typescript = Interface.generate_page_interface(:test, page_config, [], [])
+
+      # Should have enum arrays with parentheses
+      assert typescript =~ ~r/statuses:\s*\("active"\s*\|\s*"inactive"\)\[\];/
+      assert typescript =~ ~r/tags\?:\s*\("bug"\s*\|\s*"feature"\s*\|\s*"enhancement"\)\[\];/
+    end
+
+    test "mixes enums with other field types" do
+      defmodule MixedEnumsController do
+        def __inertia_pages__ do
+          %{
+            test: %{
+              component: "Test",
+              props: []
+            }
+          }
+        end
+
+        def __inertia_forms__ do
+          %{
+            config: [
+              {:name, :string, []},
+              {:status, :any, [enum: ["active", "inactive"]]},
+              {:tags, :any, [list: :string]},
+              {:priorities, :any, [list: [enum: ["low", "high"]]]}
+            ]
+          }
+        end
+
+        def __inertia_shared_modules__, do: []
+      end
+
+      # Extract forms from controller
+      forms = MixedEnumsController.__inertia_forms__()
+
+      page_config = %{
+        component: "Test",
+        props: [],
+        forms: forms
+      }
+
+      typescript = Interface.generate_page_interface(:test, page_config, [], [])
+
+      # Should have all field types
+      assert typescript =~ ~r/name:\s*string;/
+      assert typescript =~ ~r/status:\s*"active"\s*\|\s*"inactive";/
+      assert typescript =~ ~r/tags:\s*string\[\];/
+      assert typescript =~ ~r/priorities:\s*\("low"\s*\|\s*"high"\)\[\];/
+    end
+
+    test "respects snake_case_params config with enums" do
+      # Set snake_case_params to false
+      Application.put_env(:nb_inertia, :snake_case_params, false)
+
+      on_exit(fn ->
+        Application.delete_env(:nb_inertia, :snake_case_params)
+      end)
+
+      defmodule SnakeCaseEnumController do
+        def __inertia_pages__ do
+          %{
+            test: %{
+              component: "Test",
+              props: []
+            }
+          }
+        end
+
+        def __inertia_forms__ do
+          %{
+            config: [
+              {:user_status, :any, [enum: ["active", "inactive"]]},
+              {:priority_level, :any, [list: [enum: ["low", "high"]]]}
+            ]
+          }
+        end
+
+        def __inertia_shared_modules__, do: []
+      end
+
+      # Extract forms from controller
+      forms = SnakeCaseEnumController.__inertia_forms__()
+
+      page_config = %{
+        component: "Test",
+        props: [],
+        forms: forms
+      }
+
+      typescript = Interface.generate_page_interface(:test, page_config, [], [])
+
+      # Should generate snake_case field names
+      assert typescript =~ ~r/user_status:\s*"active"\s*\|\s*"inactive";/
+      assert typescript =~ ~r/priority_level:\s*\("low"\s*\|\s*"high"\)\[\];/
+      # Should NOT have camelCase
+      refute typescript =~ "userStatus"
+      refute typescript =~ "priorityLevel"
+    end
   end
 end
