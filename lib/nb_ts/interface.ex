@@ -149,6 +149,16 @@ defmodule NbTs.Interface do
         type_union = type_info[:polymorphic] |> Enum.map_join(" | ", &to_string/1)
         {type_union, []}
 
+      # Handle new unified syntax: list: :string (or other primitive)
+      # When list contains a primitive type atom like :string, :number, etc.
+      is_atom(type_info[:list]) && !is_module?(type_info[:list]) ->
+        primitive = type_info[:list]
+        base_type = elixir_type_to_typescript(primitive)
+        # Build Array<type> and apply nullable modifier if needed
+        array_type = "Array<#{base_type}>"
+        type = if type_info[:nullable], do: "#{array_type} | null", else: array_type
+        {type, []}
+
       # Handle new unified syntax: list: SerializerModule
       # When list contains a module, treat it as a list of serializers
       is_atom(type_info[:list]) && is_module?(type_info[:list]) ->
