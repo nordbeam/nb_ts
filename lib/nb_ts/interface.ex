@@ -114,7 +114,8 @@ defmodule NbTs.Interface do
       end
 
     {fields, imports} =
-      Enum.reduce(normalized_metadata, {[], []}, fn {field_name, type_info}, {fields_acc, imports_acc} ->
+      Enum.reduce(normalized_metadata, {[], []}, fn {field_name, type_info},
+                                                    {fields_acc, imports_acc} ->
         {field_type, new_imports} = resolve_field_type(type_info, visited)
 
         field = %{
@@ -128,7 +129,9 @@ defmodule NbTs.Interface do
         {[field | fields_acc], imports_acc ++ new_imports}
       end)
 
-    sorted_fields = fields |> Enum.reverse() |> Enum.sort_by(fn field -> camelize_atom(field.name) end)
+    sorted_fields =
+      fields |> Enum.reverse() |> Enum.sort_by(fn field -> camelize_atom(field.name) end)
+
     {sorted_fields, Enum.uniq(imports)}
   end
 
@@ -291,12 +294,28 @@ defmodule NbTs.Interface do
         []
       end
 
+    # Get form definitions from the controller
+    forms =
+      if function_exported?(controller_module, :__inertia_forms__, 0) do
+        controller_module.__inertia_forms__()
+      else
+        %{}
+      end
+
     # Generate interface for each page
     results =
       pages
       |> Enum.map(fn {page_name, page_config} ->
+        # Add forms to page_config
+        page_config_with_forms = Map.put(page_config, :forms, forms)
+
         typescript =
-          generate_page_interface(page_name, page_config, shared_modules, inline_shared_props)
+          generate_page_interface(
+            page_name,
+            page_config_with_forms,
+            shared_modules,
+            inline_shared_props
+          )
 
         {page_name, page_config, typescript}
       end)
@@ -338,7 +357,7 @@ defmodule NbTs.Interface do
 
       typescript = NbTs.Interface.generate_page_interface(:users_index, page_config, [], [])
   """
-  def generate_page_interface(_page_name, page_config, shared_modules, inline_shared_props) do
+  def generate_page_interface(page_name, page_config, shared_modules, inline_shared_props) do
     # Build interface name from component name
     component_name = page_config.component
     interface_name = component_name_to_interface(component_name)
@@ -399,11 +418,23 @@ defmodule NbTs.Interface do
      */
     """
 
-    typescript = """
+    props_interface = """
     #{import_statements}#{if import_statements != "", do: "\n"}#{doc_comment}export interface #{interface_name}#{extends_clause} {
     #{field_lines}#{index_signature}
     }
     """
+
+    # Generate FormInputs interface if forms are present
+    forms = Map.get(page_config, :forms, %{})
+    forms_interface = generate_forms_interface(page_name, forms, component_name)
+
+    # Combine Props and FormInputs interfaces
+    typescript =
+      if forms_interface == "" do
+        props_interface
+      else
+        props_interface <> "\n\n" <> forms_interface
+      end
 
     typescript
   end
@@ -433,7 +464,9 @@ defmodule NbTs.Interface do
         {[field | fields_acc], imports_acc ++ new_imports}
       end)
 
-    sorted_fields = fields |> Enum.reverse() |> Enum.sort_by(fn field -> camelize_atom(field.name) end)
+    sorted_fields =
+      fields |> Enum.reverse() |> Enum.sort_by(fn field -> camelize_atom(field.name) end)
+
     {sorted_fields, Enum.uniq(imports)}
   end
 
@@ -444,7 +477,9 @@ defmodule NbTs.Interface do
         {[field | fields_acc], imports_acc ++ new_imports}
       end)
 
-    sorted_fields = fields |> Enum.reverse() |> Enum.sort_by(fn field -> camelize_atom(field.name) end)
+    sorted_fields =
+      fields |> Enum.reverse() |> Enum.sort_by(fn field -> camelize_atom(field.name) end)
+
     {sorted_fields, Enum.uniq(imports)}
   end
 
@@ -543,9 +578,101 @@ defmodule NbTs.Interface do
       :number -> "number"
       :boolean -> "boolean"
       :datetime -> "string"
+      :date -> "string"
+      :any -> "any"
       :map -> "Record<string, any>"
       :list -> "any[]"
       _ -> "any"
     end
+  end
+
+  @doc """
+  Generate TypeScript FormInputs interface for form definitions.
+
+  Takes a page name, form definitions map, and component name, and generates
+  a TypeScript interface for form inputs.
+
+  Returns empty string if forms map is empty or nil.
+  """
+  def generate_forms_interface(_page_name, nil, _component_name), do: ""
+  def generate_forms_interface(_page_name, forms, _component_name) when forms == %{}, do: ""
+
+  def generate_forms_interface(page_name, forms, component_name) when is_map(forms) do
+    # Generate interface name from component name
+    interface_name = page_name_to_form_inputs_interface(page_name, component_name)
+
+    # Generate form fields
+    form_fields = generate_form_fields(forms)
+
+    # Build the interface
+    doc_comment = """
+    /**
+     * Form inputs for #{component_name}
+     */
+    """
+
+    """
+    #{doc_comment}export interface #{interface_name} {
+    #{form_fields}
+    }
+    """
+  end
+
+  @doc """
+  Generate nested TypeScript object types for all forms.
+
+  Takes a map of form definitions and returns formatted TypeScript fields.
+  """
+  def generate_form_fields(forms) when is_map(forms) do
+    forms
+    |> Enum.map(fn {form_name, fields} ->
+      # Camelize the form name
+      camelized_form_name = camelize_atom(form_name)
+
+      # Generate field definitions for this form
+      field_defs = generate_field_definitions(fields)
+
+      # Return formatted form field
+      "  #{camelized_form_name}: {\n#{field_defs}\n  };"
+    end)
+    |> Enum.join("\n")
+  end
+
+  @doc """
+  Generate field definitions with proper TypeScript types and optional markers.
+
+  Takes a list of field tuples {name, type, opts} and returns formatted TypeScript fields.
+  """
+  def generate_field_definitions(fields) when is_list(fields) do
+    fields
+    |> Enum.map(fn {name, type, opts} ->
+      # Camelize field name
+      camelized_name = camelize_atom(name)
+
+      # Map Elixir type to TypeScript
+      ts_type = elixir_type_to_typescript(type)
+
+      # Check if field is optional
+      optional_marker = if Keyword.get(opts, :optional, false), do: "?", else: ""
+
+      # Format field
+      "    #{camelized_name}#{optional_marker}: #{ts_type};"
+    end)
+    |> Enum.join("\n")
+  end
+
+  @doc """
+  Convert page name and component name to FormInputs interface name.
+
+  Examples:
+    - (:users_new, "Users/New") -> "UsersNewFormInputs"
+    - (:settings, "Settings/Index") -> "SettingsIndexFormInputs"
+  """
+  def page_name_to_form_inputs_interface(_page_name, component_name) do
+    # Use component name for consistency with Props interface
+    component_name
+    |> String.replace("/", "")
+    |> String.replace(" ", "")
+    |> Kernel.<>("FormInputs")
   end
 end
