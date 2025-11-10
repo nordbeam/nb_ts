@@ -114,8 +114,7 @@ defmodule NbTs.Interface do
       end
 
     {fields, imports} =
-      Enum.reduce(normalized_metadata, {[], []}, fn {field_name, type_info},
-                                                    {fields_acc, imports_acc} ->
+      Enum.reduce(normalized_metadata, {[], []}, fn {field_name, type_info}, {fields_acc, imports_acc} ->
         {field_type, new_imports} = resolve_field_type(type_info, visited)
 
         field = %{
@@ -393,9 +392,14 @@ defmodule NbTs.Interface do
       typescript = NbTs.Interface.generate_page_interface(:users_index, page_config, [], [])
   """
   def generate_page_interface(page_name, page_config, shared_modules, inline_shared_props) do
-    # Build interface name from component name
+    # Build interface name from component name or use custom type_name if provided
     component_name = page_config.component
-    interface_name = component_name_to_interface(component_name)
+
+    interface_name =
+      case Map.get(page_config, :type_name) do
+        nil -> component_name_to_interface(component_name)
+        custom_name -> custom_name
+      end
 
     # Combine inline shared props with page props
     # Inline shared props come first to maintain ordering
@@ -461,7 +465,7 @@ defmodule NbTs.Interface do
 
     # Generate FormInputs interface if forms are present
     forms = Map.get(page_config, :forms, %{})
-    forms_interface = generate_forms_interface(page_name, forms, component_name)
+    forms_interface = generate_forms_interface(page_name, forms, component_name, interface_name)
 
     # Combine Props and FormInputs interfaces
     typescript =
@@ -551,14 +555,14 @@ defmodule NbTs.Interface do
         Keyword.has_key?(opts, :list) && is_list(Keyword.get(opts, :list)) &&
             Keyword.has_key?(Keyword.get(opts, :list), :enum) ->
           enum_values = Keyword.get(opts, :list) |> Keyword.get(:enum)
-          enum_union = enum_values |> Enum.map(&inspect/1) |> Enum.join(" | ")
+          enum_union = enum_values |> Enum.map_join(" | ", &inspect/1)
           {"(#{enum_union})[]", [], true}
 
         # Unified syntax: enum: [...]
         # e.g., prop(:status, enum: ["active", "inactive"])
         Keyword.has_key?(opts, :enum) ->
           enum_values = Keyword.get(opts, :enum)
-          enum_union = enum_values |> Enum.map(&inspect/1) |> Enum.join(" | ")
+          enum_union = enum_values |> Enum.map_join(" | ", &inspect/1)
           {enum_union, [], false}
 
         # Check if type is in opts (e.g., prop(:name, type: "...", nullable: true))
@@ -675,17 +679,33 @@ defmodule NbTs.Interface do
   @doc """
   Generate TypeScript FormInputs interface for form definitions.
 
-  Takes a page name, form definitions map, and component name, and generates
-  a TypeScript interface for form inputs.
+  Takes a page name, form definitions map, component name, and optionally a custom props interface name,
+  and generates a TypeScript interface for form inputs.
 
   Returns empty string if forms map is empty or nil.
   """
-  def generate_forms_interface(_page_name, nil, _component_name), do: ""
-  def generate_forms_interface(_page_name, forms, _component_name) when forms == %{}, do: ""
+  def generate_forms_interface(page_name, forms, component_name, props_interface_name \\ nil)
 
-  def generate_forms_interface(page_name, forms, component_name) when is_map(forms) do
-    # Generate interface name from component name
-    interface_name = page_name_to_form_inputs_interface(page_name, component_name)
+  def generate_forms_interface(_page_name, nil, _component_name, _props_interface_name), do: ""
+
+  def generate_forms_interface(_page_name, forms, _component_name, _props_interface_name) when forms == %{}, do: ""
+
+  def generate_forms_interface(page_name, forms, component_name, props_interface_name) when is_map(forms) do
+    # Generate interface name from props interface name or component name
+    interface_name =
+      case props_interface_name do
+        nil ->
+          page_name_to_form_inputs_interface(page_name, component_name)
+
+        custom_props_name ->
+          # If custom props name ends with "Props", replace with "FormInputs"
+          # Otherwise just append "FormInputs"
+          if String.ends_with?(custom_props_name, "Props") do
+            String.replace_suffix(custom_props_name, "Props", "FormInputs")
+          else
+            custom_props_name <> "FormInputs"
+          end
+      end
 
     # Generate form fields
     form_fields = generate_form_fields(forms)
@@ -717,7 +737,7 @@ defmodule NbTs.Interface do
     camelize? = should_camelize_form_inputs?()
 
     forms
-    |> Enum.map(fn {form_name, fields} ->
+    |> Enum.map_join("\n", fn {form_name, fields} ->
       # Conditionally camelize the form name
       form_field_name =
         if camelize?, do: camelize_atom(form_name), else: Atom.to_string(form_name)
@@ -728,7 +748,6 @@ defmodule NbTs.Interface do
       # Return formatted form field
       "  #{form_field_name}: {\n#{field_defs}\n  };"
     end)
-    |> Enum.join("\n")
   end
 
   @doc """
@@ -739,7 +758,7 @@ defmodule NbTs.Interface do
   """
   def generate_field_definitions(fields, camelize? \\ true) when is_list(fields) do
     fields
-    |> Enum.map(fn field ->
+    |> Enum.map_join("\n", fn field ->
       case field do
         # Handle nested list fields (4-tuple)
         {name, :list, opts, nested_fields} when is_list(nested_fields) ->
@@ -771,8 +790,7 @@ defmodule NbTs.Interface do
                 enum_values = Keyword.get(opts, :enum)
 
                 enum_values
-                |> Enum.map(&"\"#{&1}\"")
-                |> Enum.join(" | ")
+                |> Enum.map_join(" | ", &"\"#{&1}\"")
 
               # Handle list: :string
               Keyword.has_key?(opts, :list) && is_atom(Keyword.get(opts, :list)) ->
@@ -789,8 +807,7 @@ defmodule NbTs.Interface do
 
                   enum_union =
                     enum_values
-                    |> Enum.map(&"\"#{&1}\"")
-                    |> Enum.join(" | ")
+                    |> Enum.map_join(" | ", &"\"#{&1}\"")
 
                   "(#{enum_union})[]"
                 else
@@ -806,14 +823,13 @@ defmodule NbTs.Interface do
           "    #{field_name}#{optional_marker}: #{ts_type};"
       end
     end)
-    |> Enum.join("\n")
   end
 
   # Generate field definitions for nested fields within an array.
   # Similar to generate_field_definitions but with deeper indentation.
   defp generate_nested_field_definitions(fields, camelize?) when is_list(fields) do
     fields
-    |> Enum.map(fn {name, type, opts} ->
+    |> Enum.map_join("\n", fn {name, type, opts} ->
       # Conditionally camelize field name
       field_name = if camelize?, do: camelize_atom(name), else: Atom.to_string(name)
 
@@ -826,7 +842,6 @@ defmodule NbTs.Interface do
       # Format field with deeper indentation (6 spaces for nested)
       "      #{field_name}#{optional_marker}: #{ts_type};"
     end)
-    |> Enum.join("\n")
   end
 
   # Check if form inputs should be camelized based on snake_case_params config

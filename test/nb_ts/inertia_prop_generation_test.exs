@@ -1,8 +1,4 @@
 defmodule NbTs.InertiaPropGenerationTest do
-  use ExUnit.Case, async: false
-
-  alias NbTs.Interface
-
   @moduledoc """
   Tests for TypeScript generation from Inertia props using the unified syntax.
 
@@ -12,6 +8,10 @@ defmodule NbTs.InertiaPropGenerationTest do
   - prop :status, enum: ["active", "inactive"]
   - prop :roles, list: [enum: ["admin", "user"]]
   """
+
+  use ExUnit.Case, async: false
+
+  alias NbTs.Interface
 
   describe "TypeScript generation for unified prop syntax" do
     test "generates correct TypeScript for prop with list: :string" do
@@ -194,6 +194,96 @@ defmodule NbTs.InertiaPropGenerationTest do
       assert typescript =~ ~r/permissions: \("read" \| "write"\)\[\]/
       assert typescript =~ ~s(priority?: "low" | "high")
       assert typescript =~ ~s(import type { TestPropItem } from)
+    end
+  end
+
+  describe "custom type_name option" do
+    test "uses custom type_name instead of generating from component" do
+      page_config = %{
+        component: "Public/WidgetShow",
+        type_name: "WidgetPreviewProps",
+        props: [
+          %{name: :widget, type: :map, opts: []},
+          %{name: :settings, type: :map, opts: []}
+        ]
+      }
+
+      typescript = Interface.generate_page_interface(:preview, page_config, [], [])
+
+      # Should use custom type_name
+      assert typescript =~ "export interface WidgetPreviewProps"
+      # Should NOT use the component-derived name
+      refute typescript =~ "PublicWidgetShowProps"
+    end
+
+    test "generates FormInputs interface with matching custom type_name" do
+      page_config = %{
+        component: "Public/WidgetShow",
+        type_name: "WidgetPreviewProps",
+        props: [
+          %{name: :widget, type: :map, opts: []}
+        ],
+        forms: %{
+          widget: [
+            {:name, :string, []},
+            {:enabled, :boolean, []}
+          ]
+        }
+      }
+
+      typescript = Interface.generate_page_interface(:preview, page_config, [], [])
+
+      # Props interface should use custom name
+      assert typescript =~ "export interface WidgetPreviewProps"
+      # FormInputs interface should derive from custom name
+      assert typescript =~ "export interface WidgetPreviewFormInputs"
+      # Should NOT use the component-derived names
+      refute typescript =~ "PublicWidgetShowProps"
+      refute typescript =~ "PublicWidgetShowFormInputs"
+    end
+
+    test "falls back to component-based name when type_name not provided" do
+      page_config = %{
+        component: "Users/Index",
+        props: [
+          %{name: :users, type: :list, opts: []}
+        ]
+      }
+
+      typescript = Interface.generate_page_interface(:index, page_config, [], [])
+
+      # Should use component-derived name
+      assert typescript =~ "export interface UsersIndexProps"
+    end
+
+    test "custom type_name works with shared props" do
+      defmodule TestCustomTypeNameSharedProps do
+        def __inertia_shared_props__ do
+          [
+            %{name: :current_user, type: :map, opts: []}
+          ]
+        end
+
+        def build_props(_conn, _opts) do
+          %{current_user: %{id: 1}}
+        end
+      end
+
+      page_config = %{
+        component: "Public/WidgetShow",
+        type_name: "CustomWidgetProps",
+        props: [
+          %{name: :widget, type: :map, opts: []}
+        ]
+      }
+
+      typescript =
+        Interface.generate_page_interface(:show, page_config, [TestCustomTypeNameSharedProps], [])
+
+      # Should use custom type_name
+      assert typescript =~ "export interface CustomWidgetProps"
+      # Should extend shared props
+      assert typescript =~ "extends TestCustomTypeNameSharedPropsProps"
     end
   end
 end
