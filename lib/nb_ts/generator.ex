@@ -485,7 +485,13 @@ defmodule NbTs.Generator do
 
     Enum.flat_map(page_results, fn {_page_name, page_config, typescript} ->
       component_name = page_config.component
-      interface_name = component_name_to_page_interface(component_name)
+
+      # Use custom type_name for filename if provided, otherwise derive from component
+      interface_name =
+        case Map.get(page_config, :type_name) do
+          nil -> component_name_to_page_interface(component_name)
+          custom_name -> custom_name
+        end
 
       filename = "#{interface_name}.ts"
       filepath = Path.join(output_dir, filename)
@@ -502,7 +508,14 @@ defmodule NbTs.Generator do
 
       if has_forms? do
         # Return both Props and FormInputs interface exports
-        form_inputs_interface_name = component_name_to_form_inputs_interface(component_name)
+        # Derive FormInputs name from interface_name to respect custom type_name
+        form_inputs_interface_name =
+          if String.ends_with?(interface_name, "Props") do
+            String.replace_suffix(interface_name, "Props", "FormInputs")
+          else
+            interface_name <> "FormInputs"
+          end
+
         [{interface_name, filename}, {form_inputs_interface_name, filename}]
       else
         # Only return Props interface export
@@ -536,13 +549,6 @@ defmodule NbTs.Generator do
     |> String.replace("/", "")
     |> String.replace(" ", "")
     |> Kernel.<>("Props")
-  end
-
-  defp component_name_to_form_inputs_interface(component_name) do
-    component_name
-    |> String.replace("/", "")
-    |> String.replace(" ", "")
-    |> Kernel.<>("FormInputs")
   end
 
   defp get_app_name do
