@@ -7,6 +7,8 @@ defmodule NbTs.Application do
   def start(_type, _args) do
     children =
       [
+        # Task supervisor for async operations
+        {Task.Supervisor, name: NbTs.TaskSupervisor},
         # Registry for tracking serializers
         {NbTs.Registry, []},
         # Dependency tracker for managing notebook dependencies
@@ -20,7 +22,7 @@ defmodule NbTs.Application do
   # Only start TsgoPool in dev/test - validation is compile-time only
   # Also check if binary exists to avoid startup errors before download
   defp tsgo_pool_child do
-    if Mix.env() in [:dev, :test] and tsgo_binary_exists?() do
+    if Code.ensure_loaded?(Mix) and Mix.env() in [:dev, :test] and tsgo_binary_exists?() do
       [{NbTs.TsgoPool, pool_size: pool_size()}]
     else
       []
@@ -59,21 +61,20 @@ defmodule NbTs.Application do
   # Conditionally add watcher based on environment and config
   defp watcher_child do
     if auto_watch_enabled?() do
-      [{NbTs.Watcher, watch_dirs: ["lib"]}]
+      [{NbTs.Watcher, watch_dirs: NbTs.Config.watch_dirs()}]
     else
       []
     end
   end
 
   defp auto_watch_enabled? do
-    Mix.env() == :dev and
-      Application.get_env(:nb_ts, :auto_generate, true) and
-      Application.get_env(:nb_ts, :watch, true)
+    Code.ensure_loaded?(Mix) and
+      Mix.env() == :dev and
+      NbTs.Config.auto_generate?() and
+      NbTs.Config.watch?()
   end
 
   defp pool_size do
-    # Default: max of schedulers or 10
-    default = max(System.schedulers_online(), 10)
-    Application.get_env(:nb_ts, :tsgo_pool_size, default)
+    NbTs.Config.pool_size()
   end
 end
