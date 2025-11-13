@@ -1,10 +1,10 @@
 defmodule NbTs do
   @moduledoc """
-  NbTs - TypeScript type generation and validation for Elixir.
+  NbTs - TypeScript type generation for Elixir.
 
   NbTs provides tools for working with TypeScript in your Elixir applications:
 
-  1. **~TS Sigil** - Compile-time TypeScript type validation
+  1. **~TS Sigil** - Convenient TypeScript type annotation
   2. **Type Generation** - Generate TypeScript interfaces from NbSerializer serializers
   3. **Inertia Integration** - Generate page props types for Inertia.js applications
 
@@ -20,20 +20,33 @@ defmodule NbTs do
   end
   ```
 
+  ## Configuration
+
+  Configure NbTs in your `config/config.exs`:
+
+  ```elixir
+  config :nb_ts,
+    output_dir: "assets/js/types",    # Where to generate TypeScript files
+    auto_generate: true,              # Auto-generate on compile (dev only)
+    watch: true,                      # Watch for file changes (dev only)
+    validate: false                   # Validate TypeScript (not yet implemented)
+  ```
+
   ## The ~TS Sigil
 
-  The ~TS sigil provides compile-time validation of TypeScript type syntax:
+  The ~TS sigil provides a convenient way to specify TypeScript types:
 
       import NbTs.Sigil
 
-      # Valid TypeScript types
+      # Specify TypeScript types
       type = ~TS"string"
       type = ~TS"{ id: number; name: string }"
       type = ~TS"Array<User>"
       type = ~TS"'active' | 'inactive'"
 
-      # This will fail at compile time:
-      type = ~TS"{ invalid syntax"
+  Note: The ~TS sigil does NOT perform compile-time validation. It simply
+  tags the type string for use by the type generator. Validation support
+  may be added in a future release.
 
   ## Generating TypeScript Interfaces
 
@@ -43,23 +56,26 @@ defmodule NbTs do
 
   Options:
   - `--output-dir` - Output directory (default: `assets/js/types`)
-  - `--validate` - Validate generated TypeScript
   - `--verbose` - Show detailed output
 
   ## Module Overview
 
-  - `NbTs.Sigil` - The ~TS sigil for compile-time validation
-  - `NbTs.Validator` - NIF module for TypeScript validation (Rust)
+  - `NbTs.Config` - Centralized configuration
+  - `NbTs.Sigil` - The ~TS sigil for type annotation
   - `NbTs.Interface` - Generate TypeScript interfaces from metadata
-  - `NbTs.Generator` - Validate generated TypeScript code
+  - `NbTs.Generator` - Orchestrate TypeScript type generation
   - `NbTs.TypeMapper` - Map Elixir types to TypeScript types
   - `NbTs.Registry` - Track registered serializers
+  - `NbTs.Field` - Represent TypeScript fields
+  - `NbTs.GeneratorOptions` - Configuration for generation
 
-  ## Implementation
+  ## Automatic Type Generation
 
-  Uses tsgo (Microsoft's TypeScript compiler in Go) for full type checking.
-  No npm or Node.js required - native binaries are automatically downloaded
-  from GitHub releases.
+  Types are automatically regenerated during development when:
+  - A serializer module is recompiled
+  - A controller module with Inertia pages is recompiled
+
+  This requires `auto_generate: true` in your config (default in dev).
   """
 
   @doc """

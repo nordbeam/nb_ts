@@ -3,9 +3,27 @@ defmodule NbTs.TypeMapper do
   Maps field type options to TypeScript types.
   """
 
+  @type type_info :: %{
+          optional(atom()) => term()
+        }
+  @type typescript_type :: String.t()
+
   @doc """
   Converts a field's type options to TypeScript type string.
+
+  ## Examples
+
+      iex> NbTs.TypeMapper.to_typescript(%{type: :string})
+      "string"
+
+      iex> NbTs.TypeMapper.to_typescript(%{type: :number})
+      "number"
+
+      iex> NbTs.TypeMapper.to_typescript(%{enum: ["active", "inactive"]})
+      "\\"active\\" | \\"inactive\\""
+
   """
+  @spec to_typescript(type_info()) :: typescript_type()
   def to_typescript(%{type: :string}), do: "string"
   def to_typescript(%{type: :integer}), do: "number"
   def to_typescript(%{type: :number}), do: "number"
@@ -67,7 +85,14 @@ defmodule NbTs.TypeMapper do
 
   @doc """
   Normalizes type options from field macro.
+
+  ## Examples
+
+      iex> NbTs.TypeMapper.normalize_type_opts(type: :string, nullable: true)
+      %{type: :string, nullable: true, ...}
+
   """
+  @spec normalize_type_opts(keyword()) :: type_info()
   def normalize_type_opts(opts) when is_list(opts) do
     type = Keyword.get(opts, :type)
     enum = Keyword.get(opts, :enum)
@@ -92,7 +117,20 @@ defmodule NbTs.TypeMapper do
 
   @doc """
   Applies list and nullable modifiers to a base type.
+
+  ## Examples
+
+      iex> NbTs.TypeMapper.apply_modifiers("string", %{list: true})
+      "Array<string>"
+
+      iex> NbTs.TypeMapper.apply_modifiers("string", %{nullable: true})
+      "string | null"
+
+      iex> NbTs.TypeMapper.apply_modifiers("string", %{list: true, nullable: true})
+      "Array<string> | null"
+
   """
+  @spec apply_modifiers(typescript_type(), type_info()) :: typescript_type()
   def apply_modifiers(base_type, type_info) do
     type = if Map.get(type_info, :list), do: "Array<#{base_type}>", else: base_type
     if Map.get(type_info, :nullable), do: "#{type} | null", else: type

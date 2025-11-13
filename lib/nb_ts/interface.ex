@@ -3,11 +3,36 @@ defmodule NbTs.Interface do
   Builds TypeScript interface from serializer metadata with circular dependency handling.
   """
 
+  @type t :: %__MODULE__{
+          name: String.t(),
+          fields: [map()],
+          imports: [String.t() | {String.t(), String.t()}],
+          exports: boolean(),
+          is_circular_ref: boolean()
+        }
+
   defstruct [:name, :fields, :imports, :exports, :is_circular_ref]
 
   @doc """
   Build interface with proper circular dependency detection.
+
+  ## Parameters
+
+    - `serializer_module` - The serializer module to generate types for
+    - `opts` - Options keyword list
+      - `:visited` - MapSet of already visited modules (for circular ref detection)
+
+  ## Returns
+
+  An `%NbTs.Interface{}` struct with the interface metadata.
+
+  ## Examples
+
+      interface = NbTs.Interface.build(MyApp.UserSerializer)
+      typescript = NbTs.Interface.to_typescript(interface)
+
   """
+  @spec build(module(), keyword()) :: t()
   def build(serializer_module, opts \\ []) do
     visited = Keyword.get(opts, :visited, MapSet.new())
     interface_name = interface_name(serializer_module)
@@ -43,6 +68,25 @@ defmodule NbTs.Interface do
     end
   end
 
+  @doc """
+  Converts an Interface struct to TypeScript code.
+
+  ## Parameters
+
+    - `interface` - The Interface struct to convert
+
+  ## Returns
+
+  A string containing the TypeScript interface declaration.
+
+  ## Examples
+
+      interface = NbTs.Interface.build(MyApp.UserSerializer)
+      typescript = NbTs.Interface.to_typescript(interface)
+      # => "export interface User {\n  id: number;\n  name: string;\n}\n"
+
+  """
+  @spec to_typescript(t()) :: String.t()
   def to_typescript(%__MODULE__{is_circular_ref: true} = interface) do
     # For circular refs, just return the type name
     interface.name
@@ -114,7 +158,8 @@ defmodule NbTs.Interface do
       end
 
     {fields, imports} =
-      Enum.reduce(normalized_metadata, {[], []}, fn {field_name, type_info}, {fields_acc, imports_acc} ->
+      Enum.reduce(normalized_metadata, {[], []}, fn {field_name, type_info},
+                                                    {fields_acc, imports_acc} ->
         {field_type, new_imports} = resolve_field_type(type_info, visited)
 
         field = %{
@@ -605,10 +650,9 @@ defmodule NbTs.Interface do
                 {type_name, [{type_name, module_name}]}
             end
 
-          case ts_type do
-            {type, imports} -> {type, imports, false}
-            type when is_binary(type) -> {type, [], false}
-          end
+          # ts_type is always a {type, imports} tuple from the cond above
+          {type, imports} = ts_type
+          {type, imports, false}
 
         # Has a primitive type
         Map.has_key?(prop_config, :type) ->
@@ -688,9 +732,11 @@ defmodule NbTs.Interface do
 
   def generate_forms_interface(_page_name, nil, _component_name, _props_interface_name), do: ""
 
-  def generate_forms_interface(_page_name, forms, _component_name, _props_interface_name) when forms == %{}, do: ""
+  def generate_forms_interface(_page_name, forms, _component_name, _props_interface_name)
+      when forms == %{}, do: ""
 
-  def generate_forms_interface(page_name, forms, component_name, props_interface_name) when is_map(forms) do
+  def generate_forms_interface(page_name, forms, component_name, props_interface_name)
+      when is_map(forms) do
     # Generate interface name from props interface name or component name
     interface_name =
       case props_interface_name do

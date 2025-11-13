@@ -28,29 +28,29 @@ defmodule NbTs.Generator do
       {:ok, results} = NbTs.Generator.generate(output_dir: "assets/types", validate: true)
   """
   def generate(opts \\ []) do
-    output_dir = Keyword.get(opts, :output_dir, "assets/js/types")
-    validate? = Keyword.get(opts, :validate, false)
-    verbose? = Keyword.get(opts, :verbose, false)
+    output_dir = Keyword.get(opts, :output_dir, NbTs.Config.output_dir())
+    validate? = Keyword.get(opts, :validate, NbTs.Config.validate?())
+    verbose? = Keyword.get(opts, :verbose, NbTs.Config.verbose?())
 
     # Discover serializers
-    serializers = discover_serializers()
+    serializers = NbTs.Discovery.discover_serializers()
 
     if verbose? do
       IO.puts("Found #{length(serializers)} serializers")
     end
 
     # Discover Inertia pages
-    inertia_pages = discover_inertia_pages()
+    inertia_pages = NbTs.Discovery.discover_inertia_pages()
 
     if verbose? do
       IO.puts("Found #{length(inertia_pages)} Inertia pages")
     end
 
     # Check for TypeScript type name collisions
-    check_type_name_collisions(inertia_pages)
+    NbTs.Collision.check_type_name_collisions(inertia_pages)
 
     # Discover SharedProps modules
-    shared_props_modules = discover_shared_props_modules()
+    shared_props_modules = NbTs.Discovery.discover_shared_props_modules()
 
     if verbose? do
       IO.puts("Found #{length(shared_props_modules)} SharedProps modules")
@@ -132,8 +132,8 @@ defmodule NbTs.Generator do
     serializers = Keyword.get(opts, :serializers, [])
     controllers = Keyword.get(opts, :controllers, [])
     shared_props = Keyword.get(opts, :shared_props, [])
-    output_dir = Keyword.get(opts, :output_dir, "assets/js/types")
-    validate? = Keyword.get(opts, :validate, false)
+    output_dir = Keyword.get(opts, :output_dir, NbTs.Config.output_dir())
+    validate? = Keyword.get(opts, :validate, NbTs.Config.validate?())
 
     File.mkdir_p!(output_dir)
 
@@ -329,113 +329,7 @@ defmodule NbTs.Generator do
     |> validate()
   end
 
-  # Private: Discovery and generation functions
-
-  defp discover_serializers do
-    registered =
-      if Process.whereis(NbTs.Registry) do
-        NbTs.Registry.all_serializers()
-      else
-        []
-      end
-
-    if registered == [] do
-      serializers = find_all_serializers()
-
-      Enum.each(serializers, fn module ->
-        if function_exported?(module, :__nb_serializer_ensure_registered__, 0) do
-          module.__nb_serializer_ensure_registered__()
-        end
-      end)
-
-      serializers
-    else
-      registered
-    end
-  end
-
-  defp find_all_serializers do
-    app = get_app_name()
-
-    app_modules = get_app_modules(app)
-    loaded_modules = :code.all_loaded() |> Enum.map(&elem(&1, 0))
-
-    (app_modules ++ loaded_modules)
-    |> Enum.uniq()
-    |> Enum.filter(fn module ->
-      Code.ensure_loaded?(module) &&
-        function_exported?(module, :__nb_serializer_serialize__, 2) &&
-        function_exported?(module, :__nb_serializer_type_metadata__, 0)
-    end)
-  end
-
-  defp discover_shared_props_modules do
-    app = get_app_name()
-
-    app_modules = get_app_modules(app)
-    loaded_modules = :code.all_loaded() |> Enum.map(&elem(&1, 0))
-
-    (app_modules ++ loaded_modules)
-    |> Enum.uniq()
-    |> Enum.filter(fn module ->
-      Code.ensure_loaded?(module) &&
-        function_exported?(module, :__inertia_shared_props__, 0) &&
-        function_exported?(module, :build_props, 2)
-    end)
-  end
-
-  defp discover_inertia_pages do
-    app = get_app_name()
-
-    app_modules = get_app_modules(app)
-    loaded_modules = :code.all_loaded() |> Enum.map(&elem(&1, 0))
-
-    controllers =
-      (app_modules ++ loaded_modules)
-      |> Enum.uniq()
-      |> Enum.filter(fn module ->
-        Code.ensure_loaded?(module) &&
-          function_exported?(module, :inertia_page_config, 1)
-      end)
-
-    controllers
-    |> Enum.map(fn controller ->
-      pages = get_controller_pages(controller)
-      {controller, pages}
-    end)
-    |> Enum.reject(fn {_controller, pages} -> pages == [] end)
-  end
-
-  defp get_controller_pages(controller) do
-    functions = controller.__info__(:functions)
-
-    page_functions =
-      Enum.filter(functions, fn {name, arity} ->
-        name == :page && arity == 1
-      end)
-
-    if page_functions == [] do
-      []
-    else
-      try do
-        discover_page_names_from_module(controller)
-      rescue
-        _ -> []
-      end
-    end
-  end
-
-  defp discover_page_names_from_module(controller) do
-    if function_exported?(controller, :__inertia_pages__, 0) do
-      controller.__inertia_pages__()
-      |> Enum.map(fn {page_name, _config} ->
-        config = controller.inertia_page_config(page_name)
-        {page_name, config}
-      end)
-    else
-      []
-    end
-  end
+  # Private: Generation functions
 
   defp generate_interface(serializer, output_dir, verbose?) do
     interface = Interface.build(serializer)
@@ -549,99 +443,5 @@ defmodule NbTs.Generator do
     |> String.replace("/", "")
     |> String.replace(" ", "")
     |> Kernel.<>("Props")
-  end
-
-  defp get_app_name do
-    if Code.ensure_loaded?(Mix.Project) do
-      Mix.Project.config()[:app]
-    end
-  end
-
-  defp get_app_modules(app) do
-    if app do
-      case :application.get_key(app, :modules) do
-        {:ok, modules} -> modules
-        _ -> []
-      end
-    else
-      []
-    end
-  end
-
-  # Check for TypeScript type name collisions across all Inertia pages
-  defp check_type_name_collisions(inertia_pages) do
-    # Build a map of generated type names to their sources
-    type_name_to_sources =
-      Enum.reduce(inertia_pages, %{}, fn {controller, pages}, acc ->
-        Enum.reduce(pages, acc, fn {page_name, page_config}, inner_acc ->
-          # Get the component name
-          component_name = page_config.component
-
-          # Determine the type name that will be generated
-          type_name =
-            case Map.get(page_config, :type_name) do
-              nil -> component_name_to_page_interface(component_name)
-              custom_name -> custom_name
-            end
-
-          # Track the source (controller + page_name)
-          source = {controller, page_name, component_name}
-
-          # Add to the map
-          Map.update(inner_acc, type_name, [source], fn existing_sources ->
-            [source | existing_sources]
-          end)
-        end)
-      end)
-
-    # Find collisions (type names with multiple sources)
-    collisions =
-      type_name_to_sources
-      |> Enum.filter(fn {_type_name, sources} -> length(sources) > 1 end)
-      |> Map.new()
-
-    # Emit warnings for each collision
-    Enum.each(collisions, fn {type_name, sources} ->
-      emit_collision_warning(type_name, sources)
-    end)
-
-    :ok
-  end
-
-  # Emit a compile warning for a TypeScript type name collision
-  defp emit_collision_warning(type_name, sources) do
-    # Format the list of conflicting pages
-    source_list =
-      sources
-      # Reverse to show in order they were discovered
-      |> Enum.reverse()
-      |> Enum.map_join("\n  - ", fn {controller, page_name, component_name} ->
-        "#{inspect(controller)}.#{page_name} (component: \"#{component_name}\")"
-      end)
-
-    # Get the first source's component name for the suggestion
-    {_first_controller, first_page_name, first_component_name} = List.first(sources)
-
-    IO.warn("""
-    TypeScript type name collision detected: #{type_name}
-
-    Multiple Inertia pages are generating the same TypeScript interface name:
-      - #{source_list}
-
-    This will cause duplicate exports in your generated TypeScript types file, leading to compilation errors.
-
-    Solutions:
-      1. Use the type_name option to provide unique names for each page:
-
-         inertia_page #{inspect(first_page_name)},
-           component: "#{first_component_name}",
-           type_name: "UniquePageNameProps" do
-           # ...
-         end
-
-      2. Use different component paths for each controller (recommended)
-
-    See: https://hexdocs.pm/nb_inertia/NbInertia.Controller.html#inertia_page/3
-    """)
   end
 end

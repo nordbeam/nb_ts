@@ -74,13 +74,17 @@ defmodule NbTs.CompileHooks do
     # Check if this is a serializer or controller module
     cond do
       is_serializer_module?(module) ->
-        if auto_generate_enabled?() do
-          Task.start(fn -> regenerate_types_for_module(module, :serializer) end)
+        if NbTs.Config.auto_generate?() do
+          Task.Supervisor.start_child(NbTs.TaskSupervisor, fn ->
+            regenerate_types_for_module(module, :serializer)
+          end)
         end
 
       is_controller_module?(module) ->
-        if auto_generate_enabled?() do
-          Task.start(fn -> regenerate_types_for_module(module, :controller) end)
+        if NbTs.Config.auto_generate?() do
+          Task.Supervisor.start_child(NbTs.TaskSupervisor, fn ->
+            regenerate_types_for_module(module, :controller)
+          end)
         end
 
       true ->
@@ -103,42 +107,31 @@ defmodule NbTs.CompileHooks do
       function_exported?(module, :inertia_page_config, 1)
   end
 
-  # Check if auto-generation is enabled
-  defp auto_generate_enabled? do
-    # Default to true in dev, false in prod
-    default =
-      case Mix.env() do
-        :dev -> true
-        :test -> false
-        _ -> false
-      end
-
-    Application.get_env(:nb_ts, :auto_generate, default)
-  end
-
   # Regenerate types for a specific module
   defp regenerate_types_for_module(module, type) do
-    output_dir = Application.get_env(:nb_ts, :output_dir, "assets/js/types")
+    output_dir = NbTs.Config.output_dir()
 
-    try do
-      # Use incremental generation for better performance
-      opts =
-        case type do
-          :serializer -> [serializers: [module], output_dir: output_dir, validate: false]
-          :controller -> [controllers: [module], output_dir: output_dir, validate: false]
-        end
-
-      {:ok, %{added: added, updated: updated}} = NbTs.Generator.generate_incremental(opts)
-
-      if added > 0 or updated > 0 do
-        module_name = inspect(module)
-        Logger.debug("TypeScript types regenerated for #{module_name}")
+    # Use incremental generation for better performance
+    opts =
+      case type do
+        :serializer -> [serializers: [module], output_dir: output_dir, validate: false]
+        :controller -> [controllers: [module], output_dir: output_dir, validate: false]
       end
-    rescue
-      error ->
-        Logger.warning(
-          "Error regenerating TypeScript types for #{inspect(module)}: #{inspect(error)}"
-        )
+
+    {:ok, %{added: added, updated: updated}} = NbTs.Generator.generate_incremental(opts)
+
+    if added > 0 or updated > 0 do
+      module_name = inspect(module)
+      Logger.debug("TypeScript types regenerated for #{module_name}")
     end
+
+    :ok
+  rescue
+    error ->
+      Logger.warning(
+        "Error regenerating TypeScript types for #{inspect(module)}: #{inspect(error)}"
+      )
+
+      :error
   end
 end
