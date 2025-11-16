@@ -93,7 +93,12 @@ defmodule NbTs.Generator do
       end)
     end
 
-    # Generate index file
+    # Copy Inertia declaration file if there are Inertia pages
+    if length(page_files) > 0 do
+      copy_inertia_declarations(output_dir, verbose?)
+    end
+
+    # Generate index file (after inertia.d.ts so it can detect and export it)
     generate_index(all_files, output_dir)
 
     # Validate if requested
@@ -274,6 +279,11 @@ defmodule NbTs.Generator do
         {name, filename_without_ext}
       end)
 
+    # Copy Inertia declaration file if there are page results (before index generation)
+    if length(page_results) > 0 do
+      copy_inertia_declarations(output_dir, false)
+    end
+
     if should_rebuild do
       # Index is out of sync - do full rebuild
       NbTs.IndexManager.rebuild_index(output_dir)
@@ -344,6 +354,30 @@ defmodule NbTs.Generator do
   end
 
   # Private: Generation functions
+
+  defp copy_inertia_declarations(output_dir, verbose?) do
+    # Path to the template file in priv/templates
+    template_path = Path.join(:code.priv_dir(:nb_ts), "templates/inertia.d.ts")
+
+    # Destination path in the output directory
+    dest_path = Path.join(output_dir, "inertia.d.ts")
+
+    # Copy the template file
+    case File.read(template_path) do
+      {:ok, content} ->
+        File.write!(dest_path, content)
+
+        if verbose? do
+          IO.puts("  Copied inertia.d.ts declarations")
+        end
+
+        :ok
+
+      {:error, reason} ->
+        IO.warn("Failed to copy inertia.d.ts template: #{inspect(reason)}")
+        :error
+    end
+  end
 
   defp generate_interface(serializer, output_dir, verbose?) do
     interface = Interface.build(serializer)
@@ -461,8 +495,16 @@ defmodule NbTs.Generator do
         ~s(export type { #{names_str} } from "./#{filename_without_ext}";)
       end)
 
+    # Check if inertia.d.ts exists and add export for RouteResult and Href
+    inertia_exports =
+      if File.exists?(Path.join(output_dir, "inertia.d.ts")) do
+        "\nexport type { RouteResult, Href } from \"./inertia\";"
+      else
+        ""
+      end
+
     index_path = Path.join(output_dir, "index.ts")
-    File.write!(index_path, exports <> "\n")
+    File.write!(index_path, exports <> inertia_exports <> "\n")
   end
 
   defp component_name_to_page_interface(component_name) do

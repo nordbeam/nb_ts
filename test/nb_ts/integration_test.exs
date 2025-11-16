@@ -283,4 +283,97 @@ defmodule NbTs.IntegrationTest do
       assert typescript =~ "export interface Empty {\n\n}"
     end
   end
+
+  describe "Inertia declarations" do
+    test "generates inertia.d.ts when Inertia pages are present", %{output_dir: dir} do
+      # Define a minimal controller with an Inertia page
+      defmodule TestInertiaController do
+        def __inertia_pages__ do
+          %{
+            index: %{
+              component: "Test/Index",
+              props: [
+                %{name: :message, type: :string, opts: []}
+              ]
+            }
+          }
+        end
+
+        def __inertia_shared_modules__, do: []
+      end
+
+      # Generate TypeScript
+      {:ok, _results} =
+        Generator.generate_incremental(
+          serializers: [],
+          controllers: [TestInertiaController],
+          shared_props: [],
+          output_dir: dir
+        )
+
+      # Verify inertia.d.ts was generated
+      inertia_file = Path.join(dir, "inertia.d.ts")
+      assert File.exists?(inertia_file)
+
+      inertia_content = File.read!(inertia_file)
+
+      # Verify RouteResult type is defined
+      assert inertia_content =~ "export type RouteResult"
+      assert inertia_content =~ "url: string"
+      assert inertia_content =~ "method: 'get' | 'post' | 'put' | 'patch' | 'delete' | 'head'"
+
+      # Verify Href type alias is defined
+      assert inertia_content =~ "export type Href = string | RouteResult"
+
+      # Verify module augmentation for @inertiajs/react
+      assert inertia_content =~ "declare module '@inertiajs/react'"
+      assert inertia_content =~ "interface InertiaLinkProps"
+      assert inertia_content =~ "href: string | RouteResult"
+      assert inertia_content =~ "interface Router"
+      assert inertia_content =~ "visit(href: string | RouteResult"
+
+      # Verify index.ts includes inertia exports
+      index_file = Path.join(dir, "index.ts")
+      assert File.exists?(index_file)
+
+      index_content = File.read!(index_file)
+      assert index_content =~ ~s(export type { RouteResult, Href } from "./inertia";)
+    end
+
+    test "does not generate inertia.d.ts when no Inertia pages are present", %{output_dir: dir} do
+      # Define a simple serializer
+      defmodule SimpleSerializer do
+        def __nb_serializer__, do: :ok
+        def __nb_serializer_serialize__(data, _opts), do: data
+        def __nb_serializer_ensure_registered__, do: NbTs.Registry.register(__MODULE__)
+
+        def __nb_serializer_type_metadata__ do
+          %{
+            id: %{type: :integer, optional: false, nullable: false}
+          }
+        end
+      end
+
+      SimpleSerializer.__nb_serializer_ensure_registered__()
+
+      # Generate TypeScript without any controllers
+      {:ok, _results} =
+        Generator.generate_incremental(
+          serializers: [SimpleSerializer],
+          controllers: [],
+          shared_props: [],
+          output_dir: dir
+        )
+
+      # Verify inertia.d.ts was NOT generated
+      inertia_file = Path.join(dir, "inertia.d.ts")
+      refute File.exists?(inertia_file)
+
+      # Verify index.ts does not include inertia exports
+      index_file = Path.join(dir, "index.ts")
+      index_content = File.read!(index_file)
+      refute index_content =~ "RouteResult"
+      refute index_content =~ "Href"
+    end
+  end
 end
