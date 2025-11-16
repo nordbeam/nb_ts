@@ -158,8 +158,7 @@ defmodule NbTs.Interface do
       end
 
     {fields, imports} =
-      Enum.reduce(normalized_metadata, {[], []}, fn {field_name, type_info},
-                                                    {fields_acc, imports_acc} ->
+      Enum.reduce(normalized_metadata, {[], []}, fn {field_name, type_info}, {fields_acc, imports_acc} ->
         {field_type, new_imports} = resolve_field_type(type_info, visited)
 
         field = %{
@@ -523,9 +522,16 @@ defmodule NbTs.Interface do
     typescript
   end
 
-  defp shared_props_interface_name(module) do
+  defp shared_props_interface_name(module_or_config) do
     # NbSerializer.Inertia.SharedProps.Shopify -> ShopifyProps
     # MyAppWeb.InertiaShared.Locale -> LocaleProps
+    # Extract module from config map if needed (NbInertia 0.1.1+ format)
+    module =
+      case module_or_config do
+        %{module: mod} -> mod
+        mod when is_atom(mod) -> mod
+      end
+
     module
     |> Module.split()
     |> List.last()
@@ -732,11 +738,9 @@ defmodule NbTs.Interface do
 
   def generate_forms_interface(_page_name, nil, _component_name, _props_interface_name), do: ""
 
-  def generate_forms_interface(_page_name, forms, _component_name, _props_interface_name)
-      when forms == %{}, do: ""
+  def generate_forms_interface(_page_name, forms, _component_name, _props_interface_name) when forms == %{}, do: ""
 
-  def generate_forms_interface(page_name, forms, component_name, props_interface_name)
-      when is_map(forms) do
+  def generate_forms_interface(page_name, forms, component_name, props_interface_name) when is_map(forms) do
     # Generate interface name from props interface name or component name
     interface_name =
       case props_interface_name do
