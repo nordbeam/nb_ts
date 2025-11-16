@@ -141,6 +141,28 @@ defmodule NbTs.Interface do
     |> String.replace(~r/Serializer$/, "")
   end
 
+  # Get the TypeScript filename for a serializer module (including namespace prefix)
+  defp serializer_filename(module) when is_atom(module) do
+    # Get base module name
+    base_name =
+      module
+      |> Module.split()
+      |> List.last()
+
+    # Check if module has a namespace and prepend it
+    if function_exported?(module, :__nb_serializer_typescript_namespace__, 0) do
+      case module.__nb_serializer_typescript_namespace__() do
+        nil ->
+          base_name
+
+        namespace when is_binary(namespace) ->
+          "#{namespace}#{base_name}"
+      end
+    else
+      base_name
+    end
+  end
+
   defp build_fields_with_imports(type_metadata, visited) do
     # Handle both map format and list format (for test serializers)
     normalized_metadata =
@@ -195,9 +217,9 @@ defmodule NbTs.Interface do
       # Handle relationship types
       serializer = type_info[:serializer] ->
         type_name = interface_name(serializer)
-        module_name = serializer |> Module.split() |> List.last()
-        # Return tuple of {interface_name, module_name} for correct import paths
-        {apply_modifiers(type_name, type_info), [{type_name, module_name}]}
+        filename = serializer_filename(serializer)
+        # Return tuple of {interface_name, filename} for correct import paths
+        {apply_modifiers(type_name, type_info), [{type_name, filename}]}
 
       # Handle polymorphic types
       type_info[:polymorphic] ->
