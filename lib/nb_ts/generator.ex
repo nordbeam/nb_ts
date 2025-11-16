@@ -79,6 +79,20 @@ defmodule NbTs.Generator do
 
     all_files = serializer_files ++ shared_props_files ++ page_files
 
+    # Debug: Check for duplicates BEFORE generating index
+    duplicates =
+      all_files
+      |> Enum.frequencies()
+      |> Enum.filter(fn {_item, count} -> count > 1 end)
+
+    if duplicates != [] and verbose? do
+      IO.puts("\n⚠️  Warning: Duplicate interface exports detected:")
+
+      Enum.each(duplicates, fn {{name, filename}, count} ->
+        IO.puts("  - #{name} from #{filename} (#{count} times)")
+      end)
+    end
+
     # Generate index file
     generate_index(all_files, output_dir)
 
@@ -341,7 +355,20 @@ defmodule NbTs.Generator do
       |> Module.split()
       |> List.last()
 
-    filename = "#{module_name}.ts"
+    # Check if serializer has a namespace defined and prepend it to the filename
+    filename =
+      if function_exported?(serializer, :__nb_serializer_typescript_namespace__, 0) do
+        case serializer.__nb_serializer_typescript_namespace__() do
+          nil ->
+            "#{module_name}.ts"
+
+          namespace when is_binary(namespace) ->
+            "#{namespace}#{module_name}.ts"
+        end
+      else
+        "#{module_name}.ts"
+      end
+
     filepath = Path.join(output_dir, filename)
 
     File.write!(filepath, typescript)
@@ -428,8 +455,8 @@ defmodule NbTs.Generator do
       |> Enum.map_join("\n", fn {filename, names} ->
         # Strip .ts extension from filename for the import path
         filename_without_ext = String.replace_suffix(filename, ".ts", "")
-        # Sort interface names alphabetically for consistent output
-        sorted_names = Enum.sort(names)
+        # Remove duplicates and sort interface names alphabetically for consistent output
+        sorted_names = names |> Enum.uniq() |> Enum.sort()
         names_str = Enum.join(sorted_names, ", ")
         ~s(export type { #{names_str} } from "./#{filename_without_ext}";)
       end)

@@ -106,19 +106,31 @@ defmodule NbTs.Interface do
   end
 
   defp interface_name(module) when is_atom(module) do
-    # Check if module has a custom TypeScript name
-    if function_exported?(module, :__nb_serializer_typescript_name__, 0) do
-      case module.__nb_serializer_typescript_name__() do
-        nil ->
-          # No custom name, use default
-          default_interface_name(module)
-
-        custom_name when is_binary(custom_name) ->
-          custom_name
+    # Check if module has a custom TypeScript name (highest priority)
+    custom_name =
+      if function_exported?(module, :__nb_serializer_typescript_name__, 0) do
+        module.__nb_serializer_typescript_name__()
       end
-    else
-      # Module doesn't export the function, use default
-      default_interface_name(module)
+
+    # Check if module has a namespace
+    namespace =
+      if function_exported?(module, :__nb_serializer_typescript_namespace__, 0) do
+        module.__nb_serializer_typescript_namespace__()
+      end
+
+    cond do
+      # If custom name is provided, use it as-is (no namespace prefix)
+      custom_name != nil and is_binary(custom_name) ->
+        custom_name
+
+      # If namespace is provided without custom name, prepend to default
+      namespace != nil and is_binary(namespace) ->
+        base_name = default_interface_name(module)
+        "#{namespace}#{base_name}"
+
+      # No custom name or namespace, use default
+      true ->
+        default_interface_name(module)
     end
   end
 
