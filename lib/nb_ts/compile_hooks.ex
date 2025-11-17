@@ -122,14 +122,14 @@ defmodule NbTs.CompileHooks do
 
     if added > 0 or updated > 0 do
       module_name = inspect(module)
-      Logger.debug("TypeScript types regenerated for #{module_name}")
+      Logger.debug("NbTs.CompileHooks: TypeScript types regenerated for #{module_name}")
     end
 
     :ok
   rescue
     error ->
       Logger.warning(
-        "Error regenerating TypeScript types for #{inspect(module)}: #{inspect(error)}"
+        "NbTs.CompileHooks: Error regenerating TypeScript types for #{inspect(module)}: #{inspect(error)}"
       )
 
       :error

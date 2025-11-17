@@ -50,7 +50,7 @@ defmodule NbTs.Watcher do
     {:ok, watcher_pid} = FileSystem.start_link(dirs: watch_dirs)
     FileSystem.subscribe(watcher_pid)
 
-    Logger.debug("NbTs.Watcher started, watching: #{inspect(watch_dirs)}")
+    Logger.debug("NbTs.Watcher: Started, watching: #{inspect(watch_dirs)}")
 
     {:ok,
      %{
@@ -110,7 +110,7 @@ defmodule NbTs.Watcher do
             module_names = Enum.map(modules, fn {mod, _bytecode} -> inspect(mod) end)
 
             Logger.debug(
-              "Recompiled: #{Path.relative_to_cwd(path)} (#{Enum.join(module_names, ", ")})"
+              "NbTs.Watcher: Recompiled #{Path.relative_to_cwd(path)} (#{Enum.join(module_names, ", ")})"
             )
 
             # Manually trigger compile hooks since Code.compile_file doesn't fire @after_compile
@@ -124,7 +124,7 @@ defmodule NbTs.Watcher do
       end
     rescue
       error ->
-        Logger.warning("Failed to recompile #{path}: #{inspect(error)}")
+        Logger.warning("NbTs.Watcher: Failed to recompile #{path}: #{inspect(error)}")
     end
   end
 
