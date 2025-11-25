@@ -96,9 +96,10 @@ defmodule NbTs.Generator do
     # Copy Inertia declaration file if there are Inertia pages
     if length(page_files) > 0 do
       copy_inertia_declarations(output_dir, verbose?)
+      copy_modal_declarations(output_dir, verbose?)
     end
 
-    # Generate index file (after inertia.d.ts so it can detect and export it)
+    # Generate index file (after inertia.d.ts and modals.d.ts so it can detect and export them)
     generate_index(all_files, output_dir)
 
     # Validate if requested
@@ -279,9 +280,10 @@ defmodule NbTs.Generator do
         {name, filename_without_ext}
       end)
 
-    # Copy Inertia declaration file if there are page results (before index generation)
+    # Copy Inertia and Modal declaration files if there are page results (before index generation)
     if length(page_results) > 0 do
       copy_inertia_declarations(output_dir, false)
+      copy_modal_declarations(output_dir, false)
     end
 
     if should_rebuild do
@@ -375,6 +377,30 @@ defmodule NbTs.Generator do
 
       {:error, reason} ->
         IO.warn("Failed to copy inertia.d.ts template: #{inspect(reason)}")
+        :error
+    end
+  end
+
+  defp copy_modal_declarations(output_dir, verbose?) do
+    # Path to the template file in priv/templates
+    template_path = Path.join(:code.priv_dir(:nb_ts), "templates/modals.d.ts")
+
+    # Destination path in the output directory
+    dest_path = Path.join(output_dir, "modals.d.ts")
+
+    # Copy the template file
+    case File.read(template_path) do
+      {:ok, content} ->
+        File.write!(dest_path, content)
+
+        if verbose? do
+          IO.puts("  Copied modals.d.ts declarations")
+        end
+
+        :ok
+
+      {:error, reason} ->
+        IO.warn("Failed to copy modals.d.ts template: #{inspect(reason)}")
         :error
     end
   end
@@ -503,8 +529,16 @@ defmodule NbTs.Generator do
         ""
       end
 
+    # Check if modals.d.ts exists and add export for ModalConfig and related types
+    modal_exports =
+      if File.exists?(Path.join(output_dir, "modals.d.ts")) do
+        "\nexport type { ModalConfig, ModalSize, ModalPosition } from \"./modals\";"
+      else
+        ""
+      end
+
     index_path = Path.join(output_dir, "index.ts")
-    File.write!(index_path, exports <> inertia_exports <> "\n")
+    File.write!(index_path, exports <> inertia_exports <> modal_exports <> "\n")
   end
 
   defp component_name_to_page_interface(component_name) do
