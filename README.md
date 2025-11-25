@@ -33,7 +33,7 @@ Add `nb_ts` to your `mix.exs` dependencies:
 ```elixir
 def deps do
   [
-    {:nb_ts, "~> 0.1"}
+    {:nb_ts, github: "nordbeam/nb_ts"}
   ]
 end
 ```
