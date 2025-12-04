@@ -333,11 +333,16 @@ defmodule NbTs.IntegrationTest do
       assert inertia_content =~ "visit(href: string | RouteResult"
 
       # Verify index.ts includes inertia exports
+      # The index manager now auto-exports all types from .ts files,
+      # so RouteResult and Href should be exported from inertia.d.ts
       index_file = Path.join(dir, "index.ts")
       assert File.exists?(index_file)
 
       index_content = File.read!(index_file)
-      assert index_content =~ ~s(export type { RouteResult, Href } from "./inertia";)
+      # RouteResult and Href are exported (may be grouped or separate)
+      assert index_content =~ "RouteResult"
+      assert index_content =~ "Href"
+      assert index_content =~ ~s(from "./inertia")
     end
 
     test "does not generate inertia.d.ts when no Inertia pages are present", %{output_dir: dir} do

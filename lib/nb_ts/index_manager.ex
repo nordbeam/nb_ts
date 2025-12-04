@@ -166,6 +166,17 @@ defmodule NbTs.IndexManager do
         ~s(export type { #{names_str} } from "./#{filename}";)
       end)
 
-    File.write!(index_path, content <> "\n")
+    # Check if inertia.d.ts exists and add export for RouteResult and Href
+    # This file is generated separately from the normal TypeScript generation
+    output_dir = Path.dirname(index_path)
+
+    inertia_exports =
+      if File.exists?(Path.join(output_dir, "inertia.d.ts")) do
+        "\nexport type { Href, RouteResult } from \"./inertia\";"
+      else
+        ""
+      end
+
+    File.write!(index_path, content <> inertia_exports <> "\n")
   end
 end
