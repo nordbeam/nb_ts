@@ -56,13 +56,16 @@ defmodule NbTs.IndexManager do
       |> Enum.reject(&String.ends_with?(&1, "index.ts"))
 
     exports =
-      Enum.map(files, fn filepath ->
+      Enum.flat_map(files, fn filepath ->
         filename = Path.basename(filepath, ".ts")
 
-        # Extract the actual interface/type name from the file content
-        interface_name = extract_interface_name(filepath) || filename
+        # Extract all interface/type names from the file content
+        interface_names = extract_interface_names(filepath)
 
-        {interface_name, filename}
+        # If no interfaces found, use filename as fallback
+        names = if Enum.empty?(interface_names), do: [filename], else: interface_names
+
+        Enum.map(names, fn name -> {name, filename} end)
       end)
       # Convert to map to ensure uniqueness
       |> Map.new()
@@ -74,19 +77,17 @@ defmodule NbTs.IndexManager do
     {:ok, map_size(exports)}
   end
 
-  # Extract interface name from a TypeScript file
-  # Returns the name of the first exported interface or type
-  defp extract_interface_name(filepath) do
+  # Extract all interface/type names from a TypeScript file
+  # Returns a list of exported interface/type names
+  defp extract_interface_names(filepath) do
     case File.read(filepath) do
       {:ok, content} ->
-        # Match: export interface InterfaceName or export type TypeName
-        case Regex.run(~r/export (?:interface|type) (\w+)/, content) do
-          [_, name] -> name
-          nil -> nil
-        end
+        # Match all: export interface InterfaceName or export type TypeName
+        Regex.scan(~r/export (?:interface|type) (\w+)/, content)
+        |> Enum.map(fn [_, name] -> name end)
 
       {:error, _} ->
-        nil
+        []
     end
   end
 
@@ -165,16 +166,6 @@ defmodule NbTs.IndexManager do
         ~s(export type { #{names_str} } from "./#{filename}";)
       end)
 
-    # Check if inertia.d.ts exists and add export for RouteResult and Href
-    output_dir = Path.dirname(index_path)
-
-    inertia_exports =
-      if File.exists?(Path.join(output_dir, "inertia.d.ts")) do
-        "\nexport type { RouteResult, Href } from \"./inertia\";"
-      else
-        ""
-      end
-
-    File.write!(index_path, content <> inertia_exports <> "\n")
+    File.write!(index_path, content <> "\n")
   end
 end

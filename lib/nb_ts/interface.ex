@@ -192,7 +192,8 @@ defmodule NbTs.Interface do
       end
 
     {fields, imports} =
-      Enum.reduce(normalized_metadata, {[], []}, fn {field_name, type_info}, {fields_acc, imports_acc} ->
+      Enum.reduce(normalized_metadata, {[], []}, fn {field_name, type_info},
+                                                    {fields_acc, imports_acc} ->
         {field_type, new_imports} = resolve_field_type(type_info, visited)
 
         field = %{
@@ -361,9 +362,11 @@ defmodule NbTs.Interface do
     # Render fields
     field_lines = Enum.map_join(fields, "\n", &render_field/1)
 
+    # Add index signature for Inertia compatibility with usePage<T>()
     typescript = """
     #{import_statements}#{if import_statements != "", do: "\n"}export interface #{interface_name} {
     #{field_lines}
+      [key: string]: unknown;
     }
     """
 
@@ -518,9 +521,10 @@ defmodule NbTs.Interface do
     # Render fields
     field_lines = Enum.map_join(fields, "\n", &render_field/1)
 
-    # Add index signature if requested
+    # Add index signature for Inertia compatibility
+    # This allows usePage<T>() where T extends PageProps (which has [key: string]: unknown)
     index_signature =
-      if Map.get(page_config, :index_signature, false) do
+      if Map.get(page_config, :index_signature, true) do
         "\n  [key: string]: unknown;"
       else
         ""
@@ -772,9 +776,11 @@ defmodule NbTs.Interface do
 
   def generate_forms_interface(_page_name, nil, _component_name, _props_interface_name), do: ""
 
-  def generate_forms_interface(_page_name, forms, _component_name, _props_interface_name) when forms == %{}, do: ""
+  def generate_forms_interface(_page_name, forms, _component_name, _props_interface_name)
+      when forms == %{}, do: ""
 
-  def generate_forms_interface(page_name, forms, component_name, props_interface_name) when is_map(forms) do
+  def generate_forms_interface(page_name, forms, component_name, props_interface_name)
+      when is_map(forms) do
     # Generate interface name from props interface name or component name
     interface_name =
       case props_interface_name do
