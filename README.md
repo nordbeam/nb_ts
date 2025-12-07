@@ -4,10 +4,12 @@ TypeScript type generation and validation for Elixir applications.
 
 ## Features
 
-- **~TS Sigil**: Compile-time TypeScript type validation with full type checking
+- **~TS Sigil**: Compile-time TypeScript type annotations
 - **Type Generation**: Generate TypeScript interfaces from NbSerializer serializers
 - **Inertia Integration**: Generate type-safe page props for Inertia.js applications
-- **Fast Validation**: Uses tsgo (10x faster than tsc) for full type checking
+- **Modal Types**: Automatic generation of modal/slideover configuration types
+- **Form Inputs**: Generate `FormInputs` interfaces for Inertia forms
+- **Incremental Generation**: Only regenerates types for changed modules (10-50x faster)
 - **Zero Config**: Native binaries - no npm/Node.js or Rust toolchain required
 
 ## Installation
@@ -135,18 +137,17 @@ defmodule MyAppWeb.UserController do
 end
 ```
 
-#### Compile-Time Validation
+#### The ~TS Sigil
 
-Invalid TypeScript syntax causes compilation errors:
+The `~TS` sigil marks TypeScript type strings for code generation. The type string is passed through to the generated TypeScript files as-is.
 
 ```elixir
-# This will fail to compile:
-field :bad, :typescript, type: ~TS"{ invalid syntax"
-
-# Error message:
-# ** (CompileError) Invalid TypeScript syntax in ~TS sigil
-# Error: Expected '}' but found end of file
+# These type strings are emitted directly to TypeScript
+field :metadata, :typescript, type: ~TS"Record<string, any>"
+field :status, :typescript, type: ~TS"'active' | 'inactive'"
 ```
+
+**Note:** The sigil does not perform compile-time TypeScript validation. Use your IDE's TypeScript language server or `tsc` to validate the generated files.
 
 ### Generating TypeScript Interfaces
 
@@ -208,7 +209,92 @@ NbTs generates TypeScript files for:
 1. **NbSerializer Serializers** - All serializers in your application
 2. **Inertia Page Props** - Props defined with `inertia_page`
 3. **Shared Props** - Props defined with `inertia_shared` or `NbInertia.SharedProps`
-4. **Index File** - Central `index.ts` that exports all types
+4. **Form Inputs** - Input interfaces for Inertia forms
+5. **Modal Types** - Configuration types for modals and slideovers
+6. **Index File** - Central `index.ts` that exports all types
+
+### Modal Type Generation
+
+When using nb_inertia's modal system, NbTs automatically generates modal configuration types:
+
+```typescript
+// Generated in types/modals.d.ts
+export type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | 'full';
+export type ModalPosition = 'center' | 'top' | 'bottom' | 'left' | 'right';
+
+export interface ModalConfig {
+  size?: ModalSize;
+  position?: ModalPosition;
+  slideover?: boolean;
+  closeButton?: boolean;
+  closeExplicitly?: boolean;
+  maxWidth?: string;
+  paddingClasses?: string;
+  panelClasses?: string;
+  backdropClasses?: string;
+}
+```
+
+Use these types for type-safe modal configuration:
+
+```typescript
+import type { ModalConfig } from '@/types';
+
+const modalConfig: ModalConfig = {
+  size: 'lg',
+  position: 'center',
+  closeButton: true
+};
+```
+
+### Form Inputs Generation
+
+When Inertia pages define forms, NbTs generates corresponding `FormInputs` interfaces:
+
+```elixir
+# In your controller
+inertia_page :users_edit do
+  prop :user, UserSerializer
+
+  form :user_form do
+    field :name, :string
+    field :email, :string
+    field :role, enum: ["admin", "user", "guest"]
+    field :tags, list: :string
+  end
+end
+```
+
+Generates:
+
+```typescript
+// Generated in types/UsersEditProps.ts
+export interface UsersEditProps {
+  user: User;
+}
+
+export interface UsersEditFormInputs {
+  name: string;
+  email: string;
+  role: 'admin' | 'user' | 'guest';
+  tags: string[];
+}
+```
+
+Use with Inertia's useForm:
+
+```typescript
+import type { UsersEditProps, UsersEditFormInputs } from '@/types';
+import { useForm } from '@nordbeam/nb-inertia/react/useForm';
+
+function EditUser({ user }: UsersEditProps) {
+  const form = useForm<UsersEditFormInputs>(
+    { name: user.name, email: user.email, role: user.role, tags: user.tags },
+    users.update.patch(user.id)
+  );
+  // form.data is typed as UsersEditFormInputs
+}
+```
 
 ### Using Generated Types in TypeScript
 
@@ -275,42 +361,35 @@ This command generates types when:
 
 NbTs provides two key features:
 
-### 1. TypeScript Validation
+### 1. TypeScript Type Annotations
 
-NbTs uses [tsgo](https://github.com/microsoft/typescript-go) (Microsoft's native Go TypeScript compiler) for full type checking in the `~TS` sigil.
+The `~TS` sigil provides a way to embed TypeScript type strings in your Elixir code. These are passed through to the generated TypeScript files without modification.
 
-**Why tsgo?**
-- **Full Type Checking**: Validates types, not just syntax
-- **10x Faster**: ~10-20ms validation vs 50-200ms for traditional tsc
-- **Native Binary**: No npm or Node.js runtime dependency
-- **Drop-in Replacement**: Uses same CLI API as TypeScript compiler
+```elixir
+# The type string "Record<string, any>" is emitted as-is to TypeScript
+field :metadata, type: ~TS"Record<string, any>"
+```
 
-**Installation:**
+**Type Validation:**
 
-Download tsgo binaries (required for full type checking):
+For validating generated TypeScript files, we recommend using:
+- Your IDE's TypeScript language server (VS Code, WebStorm, etc.)
+- Running `tsc --noEmit` in your assets directory
+- The `--validate` flag with `mix nb_ts.gen.types` (requires tsgo binaries)
+
+**Optional: tsgo Integration**
+
+For faster validation, you can optionally install [tsgo](https://github.com/nicolo-ribaudo/esbuild-tsc) binaries:
 
 ```bash
 mix nb_ts.download_tsgo
 ```
 
-This downloads tsgo binaries for all platforms (~36 MB total). Only the binary for your platform will be used at runtime (~6 MB).
+Then use with the `--validate` flag:
 
-**Configuration:**
-
-```elixir
-# config/config.exs
-config :nb_ts,
-  # Pool size for concurrent validations (default: max(schedulers, 10))
-  tsgo_pool_size: 10,
-
-  # Validation timeout in milliseconds (default: 30_000)
-  tsgo_timeout: 30_000
+```bash
+mix nb_ts.gen.types --validate
 ```
-
-**Performance:**
-- Validation time: 10-20ms per type check
-- Throughput: 500-1000 validations/second with default pool size
-- Memory: ~60-100 MB for pool of 10 workers
 
 ### 2. Type Generation
 

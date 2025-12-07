@@ -362,11 +362,10 @@ defmodule NbTs.Interface do
     # Render fields
     field_lines = Enum.map_join(fields, "\n", &render_field/1)
 
-    # Add index signature for Inertia compatibility with usePage<T>()
+    # Generate clean interface without index signature (breaks type inference with Omit/Pick)
     typescript = """
     #{import_statements}#{if import_statements != "", do: "\n"}export interface #{interface_name} {
     #{field_lines}
-      [key: string]: unknown;
     }
     """
 
@@ -521,10 +520,11 @@ defmodule NbTs.Interface do
     # Render fields
     field_lines = Enum.map_join(fields, "\n", &render_field/1)
 
-    # Add index signature for Inertia compatibility
-    # This allows usePage<T>() where T extends PageProps (which has [key: string]: unknown)
+    # Add index signature for Inertia compatibility (opt-in)
+    # When true, adds [key: string]: unknown; which allows usePage<T>()
+    # but breaks type inference when using Omit<>/Pick<>
     index_signature =
-      if Map.get(page_config, :index_signature, true) do
+      if Map.get(page_config, :index_signature, false) do
         "\n  [key: string]: unknown;"
       else
         ""
