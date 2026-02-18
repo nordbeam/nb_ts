@@ -71,27 +71,36 @@ defmodule NbTs.CompileHooks do
   def __after_compile__(env, _bytecode) do
     module = env.module
 
-    # Check if this is a serializer or controller module
-    cond do
-      is_serializer_module?(module) ->
-        if NbTs.Config.auto_generate?() do
-          Task.Supervisor.start_child(NbTs.TaskSupervisor, fn ->
-            regenerate_types_for_module(module, :serializer)
-          end)
-        end
+    # Skip if the TaskSupervisor isn't running yet (initial compilation before app start)
+    unless supervisor_alive?() do
+      :ok
+    else
+      cond do
+        is_serializer_module?(module) ->
+          if NbTs.Config.auto_generate?() do
+            Task.Supervisor.start_child(NbTs.TaskSupervisor, fn ->
+              regenerate_types_for_module(module, :serializer)
+            end)
+          end
 
-      is_controller_module?(module) ->
-        if NbTs.Config.auto_generate?() do
-          Task.Supervisor.start_child(NbTs.TaskSupervisor, fn ->
-            regenerate_types_for_module(module, :controller)
-          end)
-        end
+        is_controller_module?(module) ->
+          if NbTs.Config.auto_generate?() do
+            Task.Supervisor.start_child(NbTs.TaskSupervisor, fn ->
+              regenerate_types_for_module(module, :controller)
+            end)
+          end
 
-      true ->
-        :ok
+        true ->
+          :ok
+      end
     end
 
     :ok
+  end
+
+  defp supervisor_alive? do
+    pid = Process.whereis(NbTs.TaskSupervisor)
+    is_pid(pid) and Process.alive?(pid)
   end
 
   # Check if the module is a serializer module
