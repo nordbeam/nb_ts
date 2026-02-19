@@ -52,7 +52,7 @@ defmodule NbTs do
 
   Generate TypeScript interfaces from your NbSerializer serializers:
 
-      mix nb_ts.gen.types
+      mix nb_ts.gen
 
   Options:
   - `--output-dir` - Output directory (default: `assets/js/types`)

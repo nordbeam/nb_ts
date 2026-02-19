@@ -77,7 +77,10 @@ defmodule NbTs.Generator do
         generate_page_props(controller, pages, output_dir, verbose?)
       end)
 
-    all_files = serializer_files ++ shared_props_files ++ page_files
+    # Generate RPC router type (if nb_rpc procedure modules are found)
+    rpc_files = generate_rpc_types(output_dir, verbose?)
+
+    all_files = serializer_files ++ shared_props_files ++ page_files ++ rpc_files
 
     # Debug: Check for duplicates BEFORE generating index
     duplicates =
@@ -121,6 +124,7 @@ defmodule NbTs.Generator do
        serializers: length(serializers),
        shared_props: length(shared_props_modules),
        pages: length(page_files),
+       rpc: length(rpc_files),
        total_files: length(all_files),
        output_dir: output_dir
      }}
@@ -234,7 +238,24 @@ defmodule NbTs.Generator do
         end
       end)
 
-    all_results = serializer_results ++ shared_props_results ++ page_results
+    # Regenerate RPC types if any procedure modules changed
+    rpc_procedures = Keyword.get(opts, :rpc_procedures, [])
+
+    rpc_results =
+      if rpc_procedures != [] do
+        try do
+          filepath = Path.join(output_dir, "AppRouter.ts")
+          status = if File.exists?(filepath), do: :updated, else: :added
+          generate_rpc_types(output_dir, false)
+          |> Enum.map(fn {name, file} -> {status, name, file} end)
+        rescue
+          _ -> []
+        end
+      else
+        []
+      end
+
+    all_results = serializer_results ++ shared_props_results ++ page_results ++ rpc_results
 
     # Check if index needs to be rebuilt
     # If there are many "updated" files but index is small/missing, rebuild instead of incremental update
@@ -546,5 +567,32 @@ defmodule NbTs.Generator do
     |> String.replace("/", "")
     |> String.replace(" ", "")
     |> Kernel.<>("Props")
+  end
+
+  defp generate_rpc_types(output_dir, verbose?) do
+    if Code.ensure_loaded?(NbTs.RpcDiscovery) and NbTs.RpcDiscovery.rpc_available?() do
+      {interface_name, typescript} = NbTs.RpcInterface.generate_router_type()
+
+      if typescript != "" do
+        filename = "#{interface_name}.ts"
+        filepath = Path.join(output_dir, filename)
+
+        File.write!(filepath, typescript)
+
+        if verbose? do
+          scopes = NbTs.RpcDiscovery.discover_scopes()
+          procedure_count = Enum.reduce(scopes, 0, fn {_, mod}, acc ->
+            acc + length(mod.__nb_rpc_procedures__())
+          end)
+          IO.puts("  Generated #{filename} (#{length(scopes)} scopes, #{procedure_count} procedures)")
+        end
+
+        [{interface_name, filename}]
+      else
+        []
+      end
+    else
+      []
+    end
   end
 end

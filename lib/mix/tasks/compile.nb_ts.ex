@@ -44,10 +44,10 @@ defmodule Mix.Tasks.Compile.NbTs do
       previous_manifest = read_manifest()
 
       # Detect changes
-      {changed_serializers, changed_controllers, new_manifest} =
+      {changed_serializers, changed_controllers, changed_rpc_procedures, new_manifest} =
         detect_changes(current_modules, previous_manifest)
 
-      if changed_serializers == [] and changed_controllers == [] do
+      if changed_serializers == [] and changed_controllers == [] and changed_rpc_procedures == [] do
         # No changes detected
         {:noop, []}
       else
@@ -56,6 +56,7 @@ defmodule Mix.Tasks.Compile.NbTs do
           NbTs.Generator.generate_incremental(
             serializers: changed_serializers,
             controllers: changed_controllers,
+            rpc_procedures: changed_rpc_procedures,
             output_dir: output_dir
           )
 
@@ -97,10 +98,12 @@ defmodule Mix.Tasks.Compile.NbTs do
   defp discover_all_modules do
     serializers = discover_serializers()
     controllers = discover_controllers()
+    rpc_procedures = discover_rpc_procedures()
 
     %{
       serializers: serializers,
-      controllers: controllers
+      controllers: controllers,
+      rpc_procedures: rpc_procedures
     }
   end
 
@@ -138,13 +141,22 @@ defmodule Mix.Tasks.Compile.NbTs do
     end)
   end
 
+  defp discover_rpc_procedures do
+    if Code.ensure_loaded?(NbTs.RpcDiscovery) do
+      NbTs.RpcDiscovery.discover_procedure_modules()
+    else
+      []
+    end
+  end
+
   defp detect_changes(current_modules, previous_manifest) do
     current_serializers = current_modules.serializers
     current_controllers = current_modules.controllers
+    current_rpc_procedures = Map.get(current_modules, :rpc_procedures, [])
 
     # Build new manifest with current hashes
     new_manifest =
-      Map.new(current_serializers ++ current_controllers, fn module ->
+      Map.new(current_serializers ++ current_controllers ++ current_rpc_procedures, fn module ->
         {module, get_module_hash(module)}
       end)
 
@@ -159,7 +171,12 @@ defmodule Mix.Tasks.Compile.NbTs do
         changed?(module, previous_manifest, new_manifest)
       end)
 
-    {changed_serializers, changed_controllers, new_manifest}
+    changed_rpc_procedures =
+      Enum.filter(current_rpc_procedures, fn module ->
+        changed?(module, previous_manifest, new_manifest)
+      end)
+
+    {changed_serializers, changed_controllers, changed_rpc_procedures, new_manifest}
   end
 
   defp changed?(module, previous_manifest, new_manifest) do

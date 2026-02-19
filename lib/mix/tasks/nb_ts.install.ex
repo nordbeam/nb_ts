@@ -231,18 +231,18 @@ if Code.ensure_loaded?(Igniter) do
 
     defp add_type_generation_alias(igniter) do
       igniter
-      |> Igniter.Project.TaskAliases.add_alias("ts.gen", ["nb_ts.gen.types"])
+      |> Igniter.Project.TaskAliases.add_alias("ts.gen", ["nb_ts.gen"])
       |> Igniter.add_notice("""
       Added mix alias: mix ts.gen
 
-      You can now run 'mix ts.gen' instead of 'mix nb_ts.gen.types'
+      You can now run 'mix ts.gen' instead of 'mix nb_ts.gen'
       """)
     end
 
     defp add_initial_type_generation_task(igniter, output_dir) do
       # Add a task to run after installation to generate initial types
       igniter
-      |> Igniter.add_task("nb_ts.gen.types", [
+      |> Igniter.add_task("nb_ts.gen", [
         "--output-dir",
         output_dir
       ])
@@ -283,7 +283,7 @@ if Code.ensure_loaded?(Igniter) do
 
          mix ts.gen
          # or
-         mix nb_ts.gen.types
+         mix nb_ts.gen
 
       4. For NbSerializer integration, define serializers with type annotations:
 

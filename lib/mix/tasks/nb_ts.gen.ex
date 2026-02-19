@@ -1,12 +1,12 @@
-defmodule Mix.Tasks.NbTs.Gen.Types do
-  @shortdoc "Generates TypeScript types from NbSerializer serializers and Inertia pages"
+defmodule Mix.Tasks.NbTs.Gen do
+  @shortdoc "Generates TypeScript types from NbSerializer serializers and RPC routers"
 
   @moduledoc """
-  Generates TypeScript type definitions from NbSerializer serializers and Inertia page props.
+  Generates TypeScript type definitions from NbSerializer serializers and RPC routers.
 
   ## Usage
 
-      mix nb_ts.gen.types
+      mix nb_ts.gen
 
   ## Options
 
@@ -16,7 +16,7 @@ defmodule Mix.Tasks.NbTs.Gen.Types do
 
   ## Example
 
-      mix nb_ts.gen.types --output-dir assets/types --validate
+      mix nb_ts.gen --output-dir assets/types --validate
 
   This task will:
   1. Discover all NbSerializer serializers in your application

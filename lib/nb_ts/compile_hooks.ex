@@ -48,7 +48,7 @@ defmodule NbTs.CompileHooks do
   4. Index file is updated to include the new/updated types
 
   This provides real-time TypeScript type updates during development without
-  needing to manually run `mix nb_ts.gen.types`.
+  needing to manually run `mix nb_ts.gen`.
   """
 
   require Logger
