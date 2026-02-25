@@ -35,6 +35,7 @@ defmodule NbTs.IndexManager do
       |> remove_exports(Keyword.get(opts, :removed, []))
       |> add_exports(Keyword.get(opts, :added, []))
       |> update_exports(Keyword.get(opts, :updated, []))
+      |> add_declaration_exports(output_dir)
 
     # Write updated index
     write_index(index_path, new_exports)
@@ -48,12 +49,14 @@ defmodule NbTs.IndexManager do
   Used for initial generation or when index becomes corrupted.
   """
   def rebuild_index(output_dir) do
-    # Scan directory for all .ts files (except index.ts)
+    # Scan directory for all .ts files (except index.ts and .d.ts declaration files)
     files =
       output_dir
       |> Path.join("*.ts")
       |> Path.wildcard()
-      |> Enum.reject(&String.ends_with?(&1, "index.ts"))
+      |> Enum.reject(fn path ->
+        String.ends_with?(path, "index.ts") or String.ends_with?(path, ".d.ts")
+      end)
 
     exports =
       Enum.flat_map(files, fn filepath ->
@@ -69,6 +72,9 @@ defmodule NbTs.IndexManager do
       end)
       # Convert to map to ensure uniqueness
       |> Map.new()
+
+    # Add exports for declaration files (inertia.d.ts, modals.d.ts) if they exist
+    exports = add_declaration_exports(exports, output_dir)
 
     # Write index directly (don't use update_index which merges with existing)
     index_path = Path.join(output_dir, "index.ts")
@@ -152,6 +158,23 @@ defmodule NbTs.IndexManager do
     add_exports(exports_map, entries_to_update)
   end
 
+  @doc false
+  def add_declaration_exports(exports_map, output_dir) do
+    exports_map
+    |> maybe_add_declaration(output_dir, "inertia.d.ts", "inertia", ["Href", "RouteResult"])
+    |> maybe_add_declaration(output_dir, "modals.d.ts", "modals", ["ModalConfig", "ModalPosition", "ModalSize"])
+  end
+
+  defp maybe_add_declaration(exports_map, output_dir, filename, import_path, type_names) do
+    if File.exists?(Path.join(output_dir, filename)) do
+      Enum.reduce(type_names, exports_map, fn name, acc ->
+        Map.put(acc, name, import_path)
+      end)
+    else
+      exports_map
+    end
+  end
+
   defp write_index(index_path, exports_map) do
     # Group interfaces by filename so multiple interfaces from the same file
     # are exported together (e.g., SpacesNewProps and SpacesNewFormInputs)
@@ -166,17 +189,6 @@ defmodule NbTs.IndexManager do
         ~s(export type { #{names_str} } from "./#{filename}";)
       end)
 
-    # Check if inertia.d.ts exists and add export for RouteResult and Href
-    # This file is generated separately from the normal TypeScript generation
-    output_dir = Path.dirname(index_path)
-
-    inertia_exports =
-      if File.exists?(Path.join(output_dir, "inertia.d.ts")) do
-        "\nexport type { Href, RouteResult } from \"./inertia\";"
-      else
-        ""
-      end
-
-    File.write!(index_path, content <> inertia_exports <> "\n")
+    File.write!(index_path, content <> "\n")
   end
 end

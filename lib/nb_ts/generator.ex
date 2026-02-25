@@ -527,39 +527,33 @@ defmodule NbTs.Generator do
   end
 
   defp generate_index(interfaces, output_dir) do
+    # Build exports map from interfaces
+    exports_map =
+      interfaces
+      |> Enum.map(fn {name, filename} ->
+        # Strip .ts extension from filename for the import path
+        {name, String.replace_suffix(filename, ".ts", "")}
+      end)
+      |> Map.new()
+
+    # Add exports for declaration files (inertia.d.ts, modals.d.ts) if they exist
+    exports_map = NbTs.IndexManager.add_declaration_exports(exports_map, output_dir)
+
     # Group interfaces by filename so multiple interfaces from the same file
     # are exported together (e.g., SpacesNewProps and SpacesNewFormInputs)
     exports =
-      interfaces
+      exports_map
       |> Enum.group_by(fn {_name, filename} -> filename end, fn {name, _filename} -> name end)
       |> Enum.sort_by(fn {filename, _names} -> filename end)
       |> Enum.map_join("\n", fn {filename, names} ->
-        # Strip .ts extension from filename for the import path
-        filename_without_ext = String.replace_suffix(filename, ".ts", "")
         # Remove duplicates and sort interface names alphabetically for consistent output
         sorted_names = names |> Enum.uniq() |> Enum.sort()
         names_str = Enum.join(sorted_names, ", ")
-        ~s(export type { #{names_str} } from "./#{filename_without_ext}";)
+        ~s(export type { #{names_str} } from "./#{filename}";)
       end)
 
-    # Check if inertia.d.ts exists and add export for RouteResult and Href
-    inertia_exports =
-      if File.exists?(Path.join(output_dir, "inertia.d.ts")) do
-        "\nexport type { RouteResult, Href } from \"./inertia\";"
-      else
-        ""
-      end
-
-    # Check if modals.d.ts exists and add export for ModalConfig and related types
-    modal_exports =
-      if File.exists?(Path.join(output_dir, "modals.d.ts")) do
-        "\nexport type { ModalConfig, ModalSize, ModalPosition } from \"./modals\";"
-      else
-        ""
-      end
-
     index_path = Path.join(output_dir, "index.ts")
-    File.write!(index_path, exports <> inertia_exports <> modal_exports <> "\n")
+    File.write!(index_path, exports <> "\n")
   end
 
   defp component_name_to_page_interface(component_name) do
