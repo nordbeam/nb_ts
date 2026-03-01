@@ -77,10 +77,23 @@ defmodule NbTs.Generator do
         generate_page_props(controller, pages, output_dir, verbose?)
       end)
 
+    # Discover NbFlop tables
+    tables = NbTs.Discovery.discover_tables()
+
+    if verbose? do
+      IO.puts("Found #{length(tables)} NbFlop tables")
+    end
+
+    # Generate table row interfaces
+    table_files =
+      Enum.map(tables, fn table_module ->
+        NbTs.TableInterface.generate(table_module, output_dir, verbose?)
+      end)
+
     # Generate RPC router type (if nb_rpc procedure modules are found)
     rpc_files = generate_rpc_types(output_dir, verbose?)
 
-    all_files = serializer_files ++ shared_props_files ++ page_files ++ rpc_files
+    all_files = serializer_files ++ shared_props_files ++ page_files ++ table_files ++ rpc_files
 
     # Debug: Check for duplicates BEFORE generating index
     duplicates =
@@ -124,6 +137,7 @@ defmodule NbTs.Generator do
        serializers: length(serializers),
        shared_props: length(shared_props_modules),
        pages: length(page_files),
+       tables: length(table_files),
        rpc: length(rpc_files),
        total_files: length(all_files),
        output_dir: output_dir
@@ -238,6 +252,26 @@ defmodule NbTs.Generator do
         end
       end)
 
+    # Generate table row interfaces
+    tables = Keyword.get(opts, :tables, [])
+
+    table_results =
+      Enum.map(tables, fn table_module ->
+        try do
+          interface_name = NbTs.TableInterface.derive_interface_name(table_module)
+          filename = "#{interface_name}.ts"
+          filepath = Path.join(output_dir, filename)
+          status = if File.exists?(filepath), do: :updated, else: :added
+
+          NbTs.TableInterface.generate(table_module, output_dir, false)
+
+          {status, interface_name, filename}
+        rescue
+          _ -> nil
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+
     # Regenerate RPC types if any procedure modules changed
     rpc_procedures = Keyword.get(opts, :rpc_procedures, [])
 
@@ -255,7 +289,7 @@ defmodule NbTs.Generator do
         []
       end
 
-    all_results = serializer_results ++ shared_props_results ++ page_results ++ rpc_results
+    all_results = serializer_results ++ shared_props_results ++ page_results ++ table_results ++ rpc_results
 
     # Check if index needs to be rebuilt
     # If there are many "updated" files but index is small/missing, rebuild instead of incremental update

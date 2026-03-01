@@ -90,6 +90,13 @@ defmodule NbTs.CompileHooks do
             end)
           end
 
+        is_table_module?(module) ->
+          if NbTs.Config.auto_generate?() do
+            Task.Supervisor.start_child(NbTs.TaskSupervisor, fn ->
+              regenerate_types_for_module(module, :table)
+            end)
+          end
+
         true ->
           :ok
       end
@@ -116,6 +123,12 @@ defmodule NbTs.CompileHooks do
       function_exported?(module, :inertia_page_config, 1)
   end
 
+  # Check if the module is a NbFlop table module
+  defp is_table_module?(module) do
+    Code.ensure_loaded?(module) and
+      function_exported?(module, :__nb_flop_type_metadata__, 0)
+  end
+
   # Regenerate types for a specific module
   defp regenerate_types_for_module(module, type) do
     output_dir = NbTs.Config.output_dir()
@@ -125,6 +138,7 @@ defmodule NbTs.CompileHooks do
       case type do
         :serializer -> [serializers: [module], output_dir: output_dir, validate: false]
         :controller -> [controllers: [module], output_dir: output_dir, validate: false]
+        :table -> [tables: [module], output_dir: output_dir, validate: false]
       end
 
     {:ok, %{added: added, updated: updated}} = NbTs.Generator.generate_incremental(opts)

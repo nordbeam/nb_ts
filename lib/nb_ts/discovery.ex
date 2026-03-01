@@ -88,6 +88,33 @@ defmodule NbTs.Discovery do
   end
 
   @doc """
+  Discovers all NbFlop table modules with type metadata.
+
+  ## Returns
+
+  A list of table modules that export `__nb_flop_type_metadata__/0`.
+
+  ## Examples
+
+      iex> NbTs.Discovery.discover_tables()
+      [MyAppWeb.Tables.UsersTable, MyAppWeb.Tables.ContactsTable]
+  """
+  @spec discover_tables() :: [module_name()]
+  def discover_tables do
+    app = get_app_name()
+
+    app_modules = get_app_modules(app)
+    loaded_modules = :code.all_loaded() |> Enum.map(&elem(&1, 0))
+
+    (app_modules ++ loaded_modules)
+    |> Enum.uniq()
+    |> Enum.filter(fn module ->
+      Code.ensure_loaded?(module) &&
+        function_exported?(module, :__nb_flop_type_metadata__, 0)
+    end)
+  end
+
+  @doc """
   Discovers all Inertia controller modules and their pages.
 
   ## Returns
