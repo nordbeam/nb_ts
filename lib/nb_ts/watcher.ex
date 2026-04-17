@@ -46,18 +46,31 @@ defmodule NbTs.Watcher do
   def init(opts) do
     watch_dirs = opts[:watch_dirs] || ["lib"]
 
-    # Start FileSystem watcher
-    {:ok, watcher_pid} = FileSystem.start_link(dirs: watch_dirs)
-    FileSystem.subscribe(watcher_pid)
+    # Start FileSystem watcher — may return :ignore if the native backend
+    # is unavailable (e.g. missing mac_listener in worktrees)
+    case FileSystem.start_link(dirs: watch_dirs) do
+      {:ok, watcher_pid} ->
+        FileSystem.subscribe(watcher_pid)
+        Logger.debug("NbTs.Watcher: Started, watching: #{inspect(watch_dirs)}")
 
-    Logger.debug("NbTs.Watcher: Started, watching: #{inspect(watch_dirs)}")
+        {:ok,
+         %{
+           watcher: watcher_pid,
+           # path => timer_ref
+           timers: %{}
+         }}
 
-    {:ok,
-     %{
-       watcher: watcher_pid,
-       # path => timer_ref
-       timers: %{}
-     }}
+      :ignore ->
+        Logger.debug("NbTs.Watcher: FileSystem unavailable, running without file watching")
+        {:ok, %{watcher: nil, timers: %{}}}
+
+      {:error, reason} ->
+        Logger.debug(
+          "NbTs.Watcher: FileSystem failed to start (#{inspect(reason)}), running without file watching"
+        )
+
+        {:ok, %{watcher: nil, timers: %{}}}
+    end
   end
 
   @impl true

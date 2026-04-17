@@ -40,6 +40,9 @@ defmodule NbTs.MixProject do
       # Development dependencies
       {:ex_doc, "~> 0.31", only: :dev, runtime: false},
 
+      # Installer framework
+      {:igniter, "~> 0.7", optional: true, runtime: false},
+
       # Test dependencies
       {:meck, "~> 0.9", only: :test}
     ]

@@ -13,8 +13,19 @@ defmodule NbTs.RpcInterface do
 
   alias NbTs.TypeMapper
 
-  @primitive_types [:string, :integer, :float, :number, :boolean, :map, :any,
-                    :date, :datetime, :decimal, :uuid]
+  @primitive_types [
+    :string,
+    :integer,
+    :float,
+    :number,
+    :boolean,
+    :map,
+    :any,
+    :date,
+    :datetime,
+    :decimal,
+    :uuid
+  ]
 
   @doc """
   Generate the full AppRouter TypeScript file content.
@@ -50,7 +61,8 @@ defmodule NbTs.RpcInterface do
     import_lines = generate_imports(all_imports)
 
     # Build nb-rpc type imports
-    rpc_import = ~s(import type { QueryDef, MutationDef, SubscriptionDef } from "@nordbeam/nb-rpc/types";\n)
+    rpc_import =
+      ~s(import type { QueryDef, MutationDef, SubscriptionDef } from "@nordbeam/nb-rpc/types";\n)
 
     # Build the AppRouter type
     scope_entries =
@@ -111,11 +123,12 @@ defmodule NbTs.RpcInterface do
     {input_type, input_imports} = spec_to_typescript(input_spec, :input)
     {output_type, output_imports} = spec_to_typescript(output_spec, :output)
 
-    type_wrapper = case type do
-      :query -> "QueryDef"
-      :mutation -> "MutationDef"
-      :subscription -> "SubscriptionDef"
-    end
+    type_wrapper =
+      case type do
+        :query -> "QueryDef"
+        :mutation -> "MutationDef"
+        :subscription -> "SubscriptionDef"
+      end
 
     entry = "  #{camelize(to_string(name))}: #{type_wrapper}<#{input_type}, #{output_type}>;"
     imports = MapSet.union(input_imports, output_imports)
@@ -267,7 +280,9 @@ defmodule NbTs.RpcInterface do
   end
 
   defp json_schema_to_typescript(%{const: value}) when is_binary(value), do: inspect(value)
-  defp json_schema_to_typescript(%{const: value}) when is_number(value) or is_boolean(value), do: to_string(value)
+
+  defp json_schema_to_typescript(%{const: value}) when is_number(value) or is_boolean(value),
+    do: to_string(value)
 
   defp json_schema_to_typescript(%{type: :string}), do: "string"
   defp json_schema_to_typescript(%{type: :integer}), do: "number"

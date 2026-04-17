@@ -55,8 +55,16 @@ defmodule NbTs.Interface do
       visited = MapSet.put(visited, serializer_module)
       type_metadata = serializer_module.__nb_serializer_type_metadata__()
 
+      # Check if module uses snake_case for TypeScript field names
+      snake_case =
+        if function_exported?(serializer_module, :__nb_serializer_snake_case_ts__, 0) do
+          serializer_module.__nb_serializer_snake_case_ts__()
+        else
+          false
+        end
+
       # Build fields and collect imports
-      {fields, imports} = build_fields_with_imports(type_metadata, visited)
+      {fields, imports} = build_fields_with_imports(type_metadata, visited, snake_case)
 
       %__MODULE__{
         name: interface_name,
@@ -163,7 +171,7 @@ defmodule NbTs.Interface do
     end
   end
 
-  defp build_fields_with_imports(type_metadata, visited) do
+  defp build_fields_with_imports(type_metadata, visited, snake_case) do
     # Handle both map format and list format (for test serializers)
     normalized_metadata =
       case type_metadata do
@@ -201,14 +209,19 @@ defmodule NbTs.Interface do
           type: field_type,
           optional: Map.get(type_info, :optional, false),
           nullable: Map.get(type_info, :nullable, false),
-          comment: Map.get(type_info, :comment)
+          comment: Map.get(type_info, :comment),
+          snake_case: snake_case
         }
 
         {[field | fields_acc], imports_acc ++ new_imports}
       end)
 
     sorted_fields =
-      fields |> Enum.reverse() |> Enum.sort_by(fn field -> camelize_atom(field.name) end)
+      fields
+      |> Enum.reverse()
+      |> Enum.sort_by(fn field ->
+        if field[:snake_case], do: Atom.to_string(field.name), else: camelize_atom(field.name)
+      end)
 
     {sorted_fields, Enum.uniq(imports)}
   end
@@ -307,10 +320,14 @@ defmodule NbTs.Interface do
     optional = if field.optional, do: "?", else: ""
     type = field.type
 
-    # Camelize field name for JavaScript/TypeScript conventions
-    camelized_name = camelize_atom(field.name)
+    name =
+      if field[:snake_case] do
+        Atom.to_string(field.name)
+      else
+        camelize_atom(field.name)
+      end
 
-    "  #{camelized_name}#{optional}: #{type};"
+    "  #{name}#{optional}: #{type};"
   end
 
   defp camelize_atom(atom) when is_atom(atom) do
@@ -393,6 +410,11 @@ defmodule NbTs.Interface do
   def generate_page_types(controller_module, opts \\ []) do
     as_list = Keyword.get(opts, :as_list, false)
 
+    # Check if this is a Page module (use NbInertia.Page) vs Controller module
+    is_page_module =
+      function_exported?(controller_module, :__inertia_page__, 0) &&
+        !function_exported?(controller_module, :__inertia_pages__, 0)
+
     # Get shared modules registered with inertia_shared
     shared_modules =
       if function_exported?(controller_module, :__inertia_shared_modules__, 0) do
@@ -401,20 +423,31 @@ defmodule NbTs.Interface do
         []
       end
 
-    # Get all pages from the controller
+    # Get all pages from the controller or build from Page module
     pages =
-      if function_exported?(controller_module, :__inertia_pages__, 0) do
-        controller_module.__inertia_pages__()
+      if is_page_module do
+        # Page module: build page config from introspection functions
+        page_config = NbTs.Discovery.build_page_config_from_page_module(controller_module)
+        [{:__page_module__, page_config}]
       else
-        %{}
+        if function_exported?(controller_module, :__inertia_pages__, 0) do
+          controller_module.__inertia_pages__()
+        else
+          %{}
+        end
       end
 
-    # Get inline shared props (from inertia_shared do...end)
+    # Get inline shared props (from inertia_shared do...end or page-level shared)
     inline_shared_props =
-      if function_exported?(controller_module, :inertia_shared_props, 0) do
-        controller_module.inertia_shared_props()
-      else
-        []
+      cond do
+        function_exported?(controller_module, :inertia_shared_props, 0) ->
+          controller_module.inertia_shared_props()
+
+        is_page_module && function_exported?(controller_module, :__inertia_shared_inline__, 0) ->
+          controller_module.__inertia_shared_inline__() || []
+
+        true ->
+          []
       end
 
     # Generate interface for each page
@@ -593,7 +626,11 @@ defmodule NbTs.Interface do
       end)
 
     sorted_fields =
-      fields |> Enum.reverse() |> Enum.sort_by(fn field -> camelize_atom(field.name) end)
+      fields
+      |> Enum.reverse()
+      |> Enum.sort_by(fn field ->
+        if field[:snake_case], do: Atom.to_string(field.name), else: camelize_atom(field.name)
+      end)
 
     {sorted_fields, Enum.uniq(imports)}
   end
@@ -606,7 +643,11 @@ defmodule NbTs.Interface do
       end)
 
     sorted_fields =
-      fields |> Enum.reverse() |> Enum.sort_by(fn field -> camelize_atom(field.name) end)
+      fields
+      |> Enum.reverse()
+      |> Enum.sort_by(fn field ->
+        if field[:snake_case], do: Atom.to_string(field.name), else: camelize_atom(field.name)
+      end)
 
     {sorted_fields, Enum.uniq(imports)}
   end

@@ -63,7 +63,7 @@ if Code.ensure_loaded?(Igniter) do
       %Igniter.Mix.Task.Info{
         group: :nb,
         example: "mix igniter.install nb_ts --output-dir assets/js/types",
-        composes: ["deps.get"],
+        composes: [],
         schema: [
           output_dir: :string,
           yes: :boolean
@@ -318,18 +318,38 @@ if Code.ensure_loaded?(Igniter) do
 else
   # Fallback when Igniter is not available
   defmodule Mix.Tasks.NbTs.Install do
-    @moduledoc "Installs NbTs. Should be run with `mix igniter.install nb_ts`"
-    @shortdoc @moduledoc
+    @shortdoc "Install `igniter` in order to install NbTs."
+
+    @moduledoc """
+    The task 'nb_ts.install' requires igniter. Please install igniter and try again.
+
+    Add to your mix.exs for direct task usage:
+
+        {:igniter, "~> 0.7", only: [:dev, :test]}
+
+    Or install Igniter first and use the preferred installer flow:
+
+        mix igniter.install nb_ts
+    """
 
     use Mix.Task
 
     def run(_argv) do
       Mix.shell().error("""
-      The task 'nb_ts.install' requires igniter to be run.
+      The task 'nb_ts.install' requires igniter. Please install igniter and try again.
 
-      Please install igniter and try again.
+      Add to your mix.exs for direct task usage:
 
-      For more information, see: https://hexdocs.pm/igniter
+          {:igniter, "~> 0.7", only: [:dev, :test]}
+
+      Or install Igniter first and use the preferred installer flow:
+
+          mix igniter.install nb_ts
+
+      Then run:
+
+          mix deps.get
+          mix nb_ts.install
       """)
 
       exit({:shutdown, 1})

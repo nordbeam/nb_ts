@@ -115,18 +115,23 @@ defmodule NbTs.Discovery do
   end
 
   @doc """
-  Discovers all Inertia controller modules and their pages.
+  Discovers all Inertia controller modules and their pages, including
+  Page modules that use `NbInertia.Page`.
 
   ## Returns
 
-  A list of tuples containing the controller module and its page configurations.
+  A list of tuples containing the controller/page module and its page configurations.
+
+  Controller modules are discovered by the presence of `inertia_page_config/1`.
+  Page modules are discovered by the presence of `__inertia_page__/0` returning `true`.
 
   ## Examples
 
       iex> NbTs.Discovery.discover_inertia_pages()
       [
         {MyAppWeb.UserController, [users_index: %{component: "Users/Index", ...}]},
-        {MyAppWeb.PostController, [posts_show: %{component: "Posts/Show", ...}]}
+        {MyAppWeb.PostController, [posts_show: %{component: "Posts/Show", ...}]},
+        {MyAppWeb.UsersPage.Index, [__page_module__: %{component: "Users/Index", ...}]}
       ]
   """
   @spec discover_inertia_pages() :: [controller_pages()]
@@ -136,20 +141,81 @@ defmodule NbTs.Discovery do
     app_modules = get_app_modules(app)
     loaded_modules = :code.all_loaded() |> Enum.map(&elem(&1, 0))
 
-    controllers =
+    all_modules =
       (app_modules ++ loaded_modules)
       |> Enum.uniq()
+
+    # Discover traditional Controller modules
+    controllers =
+      all_modules
       |> Enum.filter(fn module ->
         Code.ensure_loaded?(module) &&
           function_exported?(module, :inertia_page_config, 1)
       end)
 
-    controllers
-    |> Enum.map(fn controller ->
-      pages = get_controller_pages(controller)
-      {controller, pages}
-    end)
-    |> Enum.reject(fn {_controller, pages} -> pages == [] end)
+    controller_results =
+      controllers
+      |> Enum.map(fn controller ->
+        pages = get_controller_pages(controller)
+        {controller, pages}
+      end)
+      |> Enum.reject(fn {_controller, pages} -> pages == [] end)
+
+    # Discover Page modules (use NbInertia.Page)
+    page_modules =
+      all_modules
+      |> Enum.filter(fn module ->
+        Code.ensure_loaded?(module) &&
+          function_exported?(module, :__inertia_page__, 0) &&
+          function_exported?(module, :__inertia_props__, 0) &&
+          function_exported?(module, :__inertia_component__, 0)
+      end)
+      # Exclude modules already found as controllers (shouldn't happen, but be safe)
+      |> Enum.reject(fn module ->
+        function_exported?(module, :inertia_page_config, 1)
+      end)
+
+    page_results =
+      page_modules
+      |> Enum.map(fn page_module ->
+        page_config = build_page_config_from_page_module(page_module)
+        {page_module, [{:__page_module__, page_config}]}
+      end)
+
+    controller_results ++ page_results
+  end
+
+  @doc """
+  Builds a page config map from a Page module's introspection functions.
+
+  Translates `__inertia_props__/0`, `__inertia_component__/0`, `__inertia_forms__/0`,
+  and `__inertia_modal__/0` into the page config format expected by the type generator.
+  """
+  @spec build_page_config_from_page_module(module_name()) :: page_config()
+  def build_page_config_from_page_module(page_module) do
+    component = page_module.__inertia_component__()
+    props = page_module.__inertia_props__()
+
+    forms =
+      if function_exported?(page_module, :__inertia_forms__, 0) do
+        page_module.__inertia_forms__()
+      else
+        %{}
+      end
+
+    options =
+      if function_exported?(page_module, :__inertia_options__, 0) do
+        page_module.__inertia_options__()
+      else
+        %{}
+      end
+
+    %{
+      component: component,
+      props: props,
+      forms: forms || %{},
+      type_name: Map.get(options, :type_name)
+    }
   end
 
   # Private functions

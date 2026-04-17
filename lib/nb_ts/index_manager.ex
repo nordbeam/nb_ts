@@ -162,7 +162,11 @@ defmodule NbTs.IndexManager do
   def add_declaration_exports(exports_map, output_dir) do
     exports_map
     |> maybe_add_declaration(output_dir, "inertia.d.ts", "inertia", ["Href", "RouteResult"])
-    |> maybe_add_declaration(output_dir, "modals.d.ts", "modals", ["ModalConfig", "ModalPosition", "ModalSize"])
+    |> maybe_add_declaration(output_dir, "modals.d.ts", "modals", [
+      "ModalConfig",
+      "ModalPosition",
+      "ModalSize"
+    ])
   end
 
   defp maybe_add_declaration(exports_map, output_dir, filename, import_path, type_names) do

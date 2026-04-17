@@ -19,7 +19,7 @@ TypeScript type generation and validation for Elixir applications.
 If you're using [NbInertia](https://github.com/nordbeam/nb_inertia), NbTs is automatically installed and configured:
 
 ```bash
-mix nb_inertia.install --typescript
+mix igniter.install nb_inertia --typescript
 ```
 
 This handles complete setup:
@@ -38,6 +38,12 @@ def deps do
     {:nb_ts, github: "nordbeam/nb_ts"}
   ]
 end
+```
+
+Or install NbTs directly with Igniter:
+
+```bash
+mix igniter.install nb_ts
 ```
 
 Then run:

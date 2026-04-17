@@ -280,6 +280,7 @@ defmodule NbTs.Generator do
         try do
           filepath = Path.join(output_dir, "AppRouter.ts")
           status = if File.exists?(filepath), do: :updated, else: :added
+
           generate_rpc_types(output_dir, false)
           |> Enum.map(fn {name, file} -> {status, name, file} end)
         rescue
@@ -289,7 +290,8 @@ defmodule NbTs.Generator do
         []
       end
 
-    all_results = serializer_results ++ shared_props_results ++ page_results ++ table_results ++ rpc_results
+    all_results =
+      serializer_results ++ shared_props_results ++ page_results ++ table_results ++ rpc_results
 
     # Check if index needs to be rebuilt
     # If there are many "updated" files but index is small/missing, rebuild instead of incremental update
@@ -609,10 +611,15 @@ defmodule NbTs.Generator do
 
         if verbose? do
           scopes = NbTs.RpcDiscovery.discover_scopes()
-          procedure_count = Enum.reduce(scopes, 0, fn {_, mod}, acc ->
-            acc + length(mod.__nb_rpc_procedures__())
-          end)
-          IO.puts("  Generated #{filename} (#{length(scopes)} scopes, #{procedure_count} procedures)")
+
+          procedure_count =
+            Enum.reduce(scopes, 0, fn {_, mod}, acc ->
+              acc + length(mod.__nb_rpc_procedures__())
+            end)
+
+          IO.puts(
+            "  Generated #{filename} (#{length(scopes)} scopes, #{procedure_count} procedures)"
+          )
         end
 
         [{interface_name, filename}]

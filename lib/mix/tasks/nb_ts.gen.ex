@@ -60,8 +60,10 @@ defmodule Mix.Tasks.NbTs.Gen do
 
     if app do
       Application.load(app)
-      # Load all BEAM files from ebin directory to ensure modules are available
-      load_beam_files(app)
+      # Load all BEAM files from host app and dependency ebin directories.
+      # Dependencies like nb_flop contain serializer modules that need to be
+      # loaded into the VM for discovery to find them.
+      load_all_beam_files(app)
     end
 
     Mix.shell().info("Generating TypeScript types...")
@@ -76,43 +78,64 @@ defmodule Mix.Tasks.NbTs.Gen do
     )
   end
 
-  # Load all BEAM files from the application's ebin directory.
-  # This fixes the bug where Application.load/1 doesn't actually load BEAM files
-  # into the VM, causing :application.get_key(app, :modules) to return an empty list.
-  defp load_beam_files(app) do
-    # Get build path from Mix
+  # Load all BEAM files from the host app and all dependency ebin directories.
+  # This ensures serializer modules from dependencies (e.g., nb_flop) are loaded
+  # into the VM so discovery can find them.
+  defp load_all_beam_files(app) do
     build_path = Mix.Project.build_path()
-    ebin_dir = Path.join([build_path, "lib", to_string(app), "ebin"])
+    lib_dir = Path.join(build_path, "lib")
 
-    if File.dir?(ebin_dir) do
-      beam_files =
-        ebin_dir
-        |> File.ls!()
-        |> Enum.filter(&String.ends_with?(&1, ".beam"))
+    # Load host app first, then all dependencies
+    ebin_dirs =
+      if File.dir?(lib_dir) do
+        host_ebin = Path.join([lib_dir, to_string(app), "ebin"])
 
-      loaded_count =
-        Enum.reduce(beam_files, 0, fn beam_file, acc ->
-          module_name =
-            beam_file
-            |> String.replace_suffix(".beam", "")
-            |> String.to_atom()
+        dep_ebins =
+          lib_dir
+          |> File.ls!()
+          |> Enum.reject(&(&1 == to_string(app)))
+          |> Enum.map(&Path.join([lib_dir, &1, "ebin"]))
+          |> Enum.filter(&File.dir?/1)
 
-          # Load module into VM if not already loaded
-          if :code.is_loaded(module_name) do
-            acc
-          else
-            beam_path = Path.join(ebin_dir, beam_file)
-
-            case :code.load_abs(String.to_charlist(Path.rootname(beam_path))) do
-              {:module, _} -> acc + 1
-              {:error, _} -> acc
-            end
-          end
-        end)
-
-      if loaded_count > 0 do
-        Mix.shell().info("Loaded #{loaded_count} BEAM files from #{ebin_dir}")
+        [host_ebin | dep_ebins]
+      else
+        []
       end
+
+    total_loaded =
+      Enum.reduce(ebin_dirs, 0, fn ebin_dir, total ->
+        total + load_beam_dir(ebin_dir)
+      end)
+
+    if total_loaded > 0 do
+      Mix.shell().info("Loaded #{total_loaded} BEAM files from #{lib_dir}")
+    end
+  end
+
+  defp load_beam_dir(ebin_dir) do
+    if File.dir?(ebin_dir) do
+      ebin_dir
+      |> File.ls!()
+      |> Enum.filter(&String.ends_with?(&1, ".beam"))
+      |> Enum.reduce(0, fn beam_file, acc ->
+        module_name =
+          beam_file
+          |> String.replace_suffix(".beam", "")
+          |> String.to_atom()
+
+        if :code.is_loaded(module_name) do
+          acc
+        else
+          beam_path = Path.join(ebin_dir, beam_file)
+
+          case :code.load_abs(String.to_charlist(Path.rootname(beam_path))) do
+            {:module, _} -> acc + 1
+            {:error, _} -> acc
+          end
+        end
+      end)
+    else
+      0
     end
   end
 end

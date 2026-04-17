@@ -94,7 +94,8 @@ defmodule NbTs.RpcInterfaceTest do
     assert result =~ "delete: MutationDef<"
 
     # Should import from nb-rpc types
-    assert result =~ ~s(import type { QueryDef, MutationDef, SubscriptionDef } from "@nordbeam/nb-rpc/types")
+    assert result =~
+             ~s(import type { QueryDef, MutationDef, SubscriptionDef } from "@nordbeam/nb-rpc/types")
   end
 
   test "generate_typescript handles inline map input/output specs" do
