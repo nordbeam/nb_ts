@@ -85,6 +85,59 @@ defmodule NbTs.IndexExportTest do
                ~r/export type \{ SpacesNewFormInputs, SpacesNewProps \} from "\.\/SpacesNewProps";/
     end
 
+    test "exports only Props when form_inputs are inlined into matching props", %{
+      output_dir: output_dir
+    } do
+      defmodule TestControllerWithInlinedForms do
+        def __inertia_pages__ do
+          %{
+            spaces_new: %{
+              component: "Spaces/New",
+              props: [%{name: :space, type: :map, opts: []}],
+              forms: %{
+                space: [
+                  {:name, :string, []},
+                  {:description, :string, [optional: true]}
+                ]
+              }
+            }
+          }
+        end
+
+        def __inertia_forms__ do
+          %{
+            space: [
+              {:name, :string, []},
+              {:description, :string, [optional: true]}
+            ]
+          }
+        end
+
+        def inertia_shared_props, do: []
+        def __inertia_shared_modules__, do: []
+      end
+
+      {:ok, _results} =
+        NbTs.Generator.generate_incremental(
+          serializers: [],
+          controllers: [TestControllerWithInlinedForms],
+          shared_props: [],
+          output_dir: output_dir
+        )
+
+      props_file = Path.join(output_dir, "SpacesNewProps.ts")
+      assert File.exists?(props_file)
+
+      content = File.read!(props_file)
+      assert content =~ "export interface SpacesNewProps"
+      assert content =~ ~r/space:\s*\{/
+      refute content =~ "export interface SpacesNewFormInputs"
+
+      index_content = File.read!(Path.join(output_dir, "index.ts"))
+      assert index_content =~ ~r/export type \{ SpacesNewProps \} from "\.\/SpacesNewProps";/
+      refute index_content =~ "SpacesNewFormInputs"
+    end
+
     test "exports only Props interface when page has no forms", %{output_dir: output_dir} do
       defmodule TestControllerWithoutForms do
         def __inertia_pages__ do

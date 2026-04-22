@@ -109,6 +109,60 @@ defmodule NbTs.InertiaPropGenerationTest do
       assert typescript =~ "tags?: string[]"
     end
 
+    test "default-backed props stay required in TypeScript" do
+      page_config = %{
+        component: "TestPage",
+        props: [
+          %{name: :contact_form, type: :map, opts: [default: %{}]}
+        ]
+      }
+
+      typescript = Interface.generate_page_interface(:test_page, page_config, [], [])
+
+      assert typescript =~ "contactForm: Record<string, any>"
+      refute typescript =~ "contactForm?:"
+    end
+
+    test "partial props are optional in TypeScript" do
+      page_config = %{
+        component: "TestPage",
+        props: [
+          %{name: :filters, type: :map, opts: [partial: true]}
+        ]
+      }
+
+      typescript = Interface.generate_page_interface(:test_page, page_config, [], [])
+
+      assert typescript =~ "filters?: Record<string, any>"
+    end
+
+    test "lazy props stay required in TypeScript" do
+      page_config = %{
+        component: "TestPage",
+        props: [
+          %{name: :stats, type: :map, opts: [lazy: true]}
+        ]
+      }
+
+      typescript = Interface.generate_page_interface(:test_page, page_config, [], [])
+
+      assert typescript =~ "stats: Record<string, any>"
+      refute typescript =~ "stats?:"
+    end
+
+    test "deferred props are optional in TypeScript" do
+      page_config = %{
+        component: "TestPage",
+        props: [
+          %{name: :recommendations, type: :map, opts: [defer: true]}
+        ]
+      }
+
+      typescript = Interface.generate_page_interface(:test_page, page_config, [], [])
+
+      assert typescript =~ "recommendations?: Record<string, any>"
+    end
+
     test "generates correct TypeScript for nullable enum" do
       prop_config = %{
         name: :priority,
@@ -195,6 +249,41 @@ defmodule NbTs.InertiaPropGenerationTest do
       assert typescript =~ ~s(priority?: "low" | "high")
       assert typescript =~ ~s(import type { TestPropItem } from)
     end
+
+    test "keeps serializer prop output type when a same-named form is present" do
+      defmodule TestPropEditUserSerializer do
+        def __nb_serializer__, do: :ok
+        def __nb_serializer_ensure_registered__, do: NbTs.Registry.register(__MODULE__)
+
+        def __nb_serializer_type_metadata__ do
+          %{
+            id: %{type: :integer, optional: false, nullable: false},
+            name: %{type: :string, optional: false, nullable: false}
+          }
+        end
+      end
+
+      TestPropEditUserSerializer.__nb_serializer_ensure_registered__()
+
+      page_config = %{
+        component: "Users/Edit",
+        props: [
+          %{name: :user, serializer: TestPropEditUserSerializer, opts: []}
+        ],
+        forms: %{
+          user: [
+            {:name, :string, []},
+            {:email, :string, []}
+          ]
+        }
+      }
+
+      typescript = Interface.generate_page_interface(:users_edit, page_config, [], [])
+
+      assert typescript =~ "user: TestPropEditUser;"
+      assert typescript =~ "export interface UsersEditFormInputs"
+      refute typescript =~ ~s(user: UsersEditFormInputs["user"])
+    end
   end
 
   describe "custom type_name option" do
@@ -216,7 +305,7 @@ defmodule NbTs.InertiaPropGenerationTest do
       refute typescript =~ "PublicWidgetShowProps"
     end
 
-    test "generates FormInputs interface with matching custom type_name" do
+    test "inlines matching form inputs when custom type_name is used" do
       page_config = %{
         component: "Public/WidgetShow",
         type_name: "WidgetPreviewProps",
@@ -235,8 +324,10 @@ defmodule NbTs.InertiaPropGenerationTest do
 
       # Props interface should use custom name
       assert typescript =~ "export interface WidgetPreviewProps"
-      # FormInputs interface should derive from custom name
-      assert typescript =~ "export interface WidgetPreviewFormInputs"
+      assert typescript =~ ~r/widget:\s*\{/
+      assert typescript =~ "name: string;"
+      assert typescript =~ "enabled: boolean;"
+      refute typescript =~ "WidgetPreviewFormInputs"
       # Should NOT use the component-derived names
       refute typescript =~ "PublicWidgetShowProps"
       refute typescript =~ "PublicWidgetShowFormInputs"

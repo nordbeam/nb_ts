@@ -475,6 +475,13 @@ defmodule NbTs.Interface do
     end
   end
 
+  @doc false
+  def page_interface_names(page_name, page_config, inline_shared_props \\ []) do
+    page_name
+    |> page_layout_plan(page_config, inline_shared_props)
+    |> Map.fetch!(:interfaces)
+  end
+
   @doc """
   Generate TypeScript interface for a single Inertia page.
 
@@ -505,18 +512,13 @@ defmodule NbTs.Interface do
       typescript = NbTs.Interface.generate_page_interface(:users_index, page_config, [], [])
   """
   def generate_page_interface(page_name, page_config, shared_modules, inline_shared_props) do
-    # Build interface name from component name or use custom type_name if provided
-    component_name = page_config.component
-
-    interface_name =
-      case Map.get(page_config, :type_name) do
-        nil -> component_name_to_interface(component_name)
-        custom_name -> custom_name
-      end
-
-    # Combine inline shared props with page props
-    # Inline shared props come first to maintain ordering
-    all_props = inline_shared_props ++ page_config.props
+    %{
+      component_name: component_name,
+      interface_name: interface_name,
+      all_props: all_props,
+      matched_forms: matched_forms,
+      unmatched_forms: unmatched_forms
+    } = page_layout_plan(page_name, page_config, inline_shared_props)
 
     # Build extends clause if there are shared modules
     extends_clause =
@@ -531,7 +533,7 @@ defmodule NbTs.Interface do
       end
 
     # Convert all props (inline shared + page props) to TypeScript fields
-    {fields, imports} = build_page_props_fields(all_props)
+    {fields, imports} = build_page_props_fields(all_props, matched_forms)
 
     # Add imports for shared props interfaces if needed
     shared_imports =
@@ -579,8 +581,8 @@ defmodule NbTs.Interface do
     """
 
     # Generate FormInputs interface if forms are present
-    forms = Map.get(page_config, :forms, %{})
-    forms_interface = generate_forms_interface(page_name, forms, component_name, interface_name)
+    forms_interface =
+      generate_forms_interface(page_name, unmatched_forms, component_name, interface_name)
 
     # Combine Props and FormInputs interfaces
     typescript =
@@ -618,6 +620,40 @@ defmodule NbTs.Interface do
     |> Kernel.<>("Props")
   end
 
+  defp page_props_interface_name(page_config) do
+    component_name = page_config.component
+
+    case Map.get(page_config, :type_name) do
+      nil -> component_name_to_interface(component_name)
+      custom_name -> custom_name
+    end
+  end
+
+  defp page_layout_plan(page_name, page_config, inline_shared_props) do
+    component_name = page_config.component
+    interface_name = page_props_interface_name(page_config)
+    all_props = inline_shared_props ++ Map.get(page_config, :props, [])
+
+    {matched_forms, unmatched_forms} =
+      partition_forms_by_props(Map.get(page_config, :forms, %{}), all_props)
+
+    interfaces =
+      if unmatched_forms == %{} do
+        [interface_name]
+      else
+        [interface_name, form_inputs_interface_name(page_name, component_name, interface_name)]
+      end
+
+    %{
+      component_name: component_name,
+      interface_name: interface_name,
+      all_props: all_props,
+      matched_forms: matched_forms,
+      unmatched_forms: unmatched_forms,
+      interfaces: interfaces
+    }
+  end
+
   defp build_shared_props_fields(props) do
     {fields, imports} =
       Enum.reduce(props, {[], []}, fn prop_config, {fields_acc, imports_acc} ->
@@ -635,10 +671,12 @@ defmodule NbTs.Interface do
     {sorted_fields, Enum.uniq(imports)}
   end
 
-  defp build_page_props_fields(props) do
+  defp build_page_props_fields(props, forms) do
+    form_prop_references = build_form_prop_references(forms)
+
     {fields, imports} =
       Enum.reduce(props, {[], []}, fn prop_config, {fields_acc, imports_acc} ->
-        {field, new_imports} = prop_config_to_field(prop_config)
+        {field, new_imports} = prop_config_to_field(prop_config, form_prop_references)
         {[field | fields_acc], imports_acc ++ new_imports}
       end)
 
@@ -652,17 +690,50 @@ defmodule NbTs.Interface do
     {sorted_fields, Enum.uniq(imports)}
   end
 
-  defp prop_config_to_field(prop_config) do
+  defp build_form_prop_references(nil), do: %{}
+  defp build_form_prop_references(forms) when forms == %{}, do: %{}
+
+  defp build_form_prop_references(forms) when is_map(forms) do
+    Enum.into(forms, %{}, fn {form_name, fields} ->
+      {form_name, inline_form_type(fields, 2)}
+    end)
+  end
+
+  defp partition_forms_by_props(nil, _props), do: {%{}, %{}}
+  defp partition_forms_by_props(forms, _props) when forms == %{}, do: {%{}, %{}}
+
+  defp partition_forms_by_props(forms, props) when is_map(forms) do
+    compatible_prop_names =
+      props
+      |> Enum.filter(&form_inputs_compatible_prop?/1)
+      |> Enum.map(& &1.name)
+      |> MapSet.new()
+
+    Enum.reduce(forms, {%{}, %{}}, fn {form_name, fields}, {matched, unmatched} ->
+      if MapSet.member?(compatible_prop_names, form_name) do
+        {Map.put(matched, form_name, fields), unmatched}
+      else
+        {matched, Map.put(unmatched, form_name, fields)}
+      end
+    end)
+  end
+
+  defp prop_config_to_field(prop_config), do: prop_config_to_field(prop_config, %{})
+
+  defp prop_config_to_field(prop_config, form_prop_references) do
     name = prop_config.name
     opts = Map.get(prop_config, :opts, [])
     optional = Keyword.get(opts, :optional, false)
-    lazy = Keyword.get(opts, :lazy, false)
+    partial = Keyword.get(opts, :partial, optional)
     defer = Keyword.get(opts, :defer, false)
     nullable = Keyword.get(opts, :nullable, false)
 
     # Check for unified syntax in opts first
     {ts_type, imports, already_has_list_modifier} =
       cond do
+        Map.has_key?(form_prop_references, name) and form_inputs_compatible_prop?(prop_config) ->
+          {Map.fetch!(form_prop_references, name), [], false}
+
         # Unified syntax: list: SerializerModule
         # e.g., prop(:users, list: UserSerializer)
         Keyword.has_key?(opts, :list) && is_atom(Keyword.get(opts, :list)) &&
@@ -779,12 +850,53 @@ defmodule NbTs.Interface do
     field = %{
       name: name,
       type: ts_type,
-      optional: optional || lazy || defer,
+      optional: partial || defer,
       nullable: false,
       comment: nil
     }
 
     {field, imports}
+  end
+
+  defp form_inputs_compatible_prop?(prop_config) do
+    opts = Map.get(prop_config, :opts, [])
+    declared_type = prop_declared_type(prop_config)
+
+    cond do
+      Map.has_key?(prop_config, :serializer) ->
+        false
+
+      Keyword.has_key?(opts, :list) or Keyword.has_key?(opts, :enum) ->
+        false
+
+      declared_type in [:map, :any] ->
+        true
+
+      true ->
+        is_nil(declared_type)
+    end
+  end
+
+  defp prop_declared_type(prop_config) do
+    case Map.get(prop_config, :type) do
+      nil ->
+        prop_config
+        |> Map.get(:opts, [])
+        |> Keyword.get(:type)
+
+      type ->
+        type
+    end
+  end
+
+  defp inline_form_type(fields, indent_size) do
+    camelize? = should_camelize_form_inputs?()
+    field_defs = generate_field_definitions(fields, camelize?, indent_size + 2)
+    "{\n#{field_defs}\n#{spaces(indent_size)}}"
+  end
+
+  defp spaces(count) when is_integer(count) and count >= 0 do
+    String.duplicate(" ", count)
   end
 
   # is_module?/1 helper is defined earlier in the file (around line 179)
@@ -822,21 +934,7 @@ defmodule NbTs.Interface do
 
   def generate_forms_interface(page_name, forms, component_name, props_interface_name)
       when is_map(forms) do
-    # Generate interface name from props interface name or component name
-    interface_name =
-      case props_interface_name do
-        nil ->
-          page_name_to_form_inputs_interface(page_name, component_name)
-
-        custom_props_name ->
-          # If custom props name ends with "Props", replace with "FormInputs"
-          # Otherwise just append "FormInputs"
-          if String.ends_with?(custom_props_name, "Props") do
-            String.replace_suffix(custom_props_name, "Props", "FormInputs")
-          else
-            custom_props_name <> "FormInputs"
-          end
-      end
+    interface_name = form_inputs_interface_name(page_name, component_name, props_interface_name)
 
     # Generate form fields
     form_fields = generate_form_fields(forms)
@@ -869,15 +967,8 @@ defmodule NbTs.Interface do
 
     forms
     |> Enum.map_join("\n", fn {form_name, fields} ->
-      # Conditionally camelize the form name
-      form_field_name =
-        if camelize?, do: camelize_atom(form_name), else: Atom.to_string(form_name)
-
-      # Generate field definitions for this form
-      field_defs = generate_field_definitions(fields, camelize?)
-
       # Return formatted form field
-      "  #{form_field_name}: {\n#{field_defs}\n  };"
+      "  #{form_field_name(form_name, camelize?)}: #{inline_form_type(fields, 2)};"
     end)
   end
 
@@ -887,7 +978,8 @@ defmodule NbTs.Interface do
   Takes a list of field tuples and returns formatted TypeScript fields.
   Supports both regular fields {name, type, opts} and nested list fields {name, :list, opts, nested_fields}.
   """
-  def generate_field_definitions(fields, camelize? \\ true) when is_list(fields) do
+  def generate_field_definitions(fields, camelize? \\ true, indent_size \\ 4)
+      when is_list(fields) do
     fields
     |> Enum.map_join("\n", fn field ->
       case field do
@@ -900,10 +992,11 @@ defmodule NbTs.Interface do
           optional_marker = if Keyword.get(opts, :optional, false), do: "?", else: ""
 
           # Generate nested object type
-          nested_definitions = generate_nested_field_definitions(nested_fields, camelize?)
+          nested_definitions =
+            generate_nested_field_definitions(nested_fields, camelize?, indent_size + 2)
 
           # Format as Array<{ ... }>
-          "    #{field_name}#{optional_marker}: Array<{\n#{nested_definitions}\n    }>;"
+          "#{spaces(indent_size)}#{field_name}#{optional_marker}: Array<{\n#{nested_definitions}\n#{spaces(indent_size)}}>;"
 
         # Handle fields with options (3-tuple)
         {name, type, opts} ->
@@ -951,14 +1044,14 @@ defmodule NbTs.Interface do
             end
 
           # Format field
-          "    #{field_name}#{optional_marker}: #{ts_type};"
+          "#{spaces(indent_size)}#{field_name}#{optional_marker}: #{ts_type};"
       end
     end)
   end
 
   # Generate field definitions for nested fields within an array.
   # Similar to generate_field_definitions but with deeper indentation.
-  defp generate_nested_field_definitions(fields, camelize?) when is_list(fields) do
+  defp generate_nested_field_definitions(fields, camelize?, indent_size) when is_list(fields) do
     fields
     |> Enum.map_join("\n", fn {name, type, opts} ->
       # Conditionally camelize field name
@@ -970,8 +1063,7 @@ defmodule NbTs.Interface do
       # Check if field is optional
       optional_marker = if Keyword.get(opts, :optional, false), do: "?", else: ""
 
-      # Format field with deeper indentation (6 spaces for nested)
-      "      #{field_name}#{optional_marker}: #{ts_type};"
+      "#{spaces(indent_size)}#{field_name}#{optional_marker}: #{ts_type};"
     end)
   end
 
@@ -980,6 +1072,24 @@ defmodule NbTs.Interface do
   # When snake_case_params is false, frontend sends snake_case and backend doesn't convert
   defp should_camelize_form_inputs? do
     Application.get_env(:nb_inertia, :snake_case_params, true)
+  end
+
+  defp form_inputs_interface_name(page_name, component_name, props_interface_name) do
+    case props_interface_name do
+      nil ->
+        page_name_to_form_inputs_interface(page_name, component_name)
+
+      custom_props_name ->
+        if String.ends_with?(custom_props_name, "Props") do
+          String.replace_suffix(custom_props_name, "Props", "FormInputs")
+        else
+          custom_props_name <> "FormInputs"
+        end
+    end
+  end
+
+  defp form_field_name(form_name, camelize?) do
+    if camelize?, do: camelize_atom(form_name), else: Atom.to_string(form_name)
   end
 
   @doc """

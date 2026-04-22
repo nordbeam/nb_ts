@@ -520,16 +520,11 @@ defmodule NbTs.Generator do
 
   defp generate_page_props(controller, _pages, output_dir, verbose?) do
     page_results = Interface.generate_page_types(controller, as_list: true)
+    inline_shared_props = inline_shared_props(controller)
 
-    Enum.flat_map(page_results, fn {_page_name, page_config, typescript} ->
-      component_name = page_config.component
-
-      # Use custom type_name for filename if provided, otherwise derive from component
-      interface_name =
-        case Map.get(page_config, :type_name) do
-          nil -> component_name_to_page_interface(component_name)
-          custom_name -> custom_name
-        end
+    Enum.flat_map(page_results, fn {page_name, page_config, typescript} ->
+      [interface_name | extra_interface_names] =
+        Interface.page_interface_names(page_name, page_config, inline_shared_props)
 
       filename = "#{interface_name}.ts"
       filepath = Path.join(output_dir, filename)
@@ -540,26 +535,25 @@ defmodule NbTs.Generator do
         IO.puts("  Generated #{filename}")
       end
 
-      # Check if page has forms and generate FormInputs interface export
-      forms = Map.get(page_config, :forms, %{})
-      has_forms? = forms != nil and forms != %{}
-
-      if has_forms? do
-        # Return both Props and FormInputs interface exports
-        # Derive FormInputs name from interface_name to respect custom type_name
-        form_inputs_interface_name =
-          if String.ends_with?(interface_name, "Props") do
-            String.replace_suffix(interface_name, "Props", "FormInputs")
-          else
-            interface_name <> "FormInputs"
-          end
-
-        [{interface_name, filename}, {form_inputs_interface_name, filename}]
-      else
-        # Only return Props interface export
-        [{interface_name, filename}]
-      end
+      Enum.map([interface_name | extra_interface_names], &{&1, filename})
     end)
+  end
+
+  defp inline_shared_props(controller) do
+    is_page_module =
+      function_exported?(controller, :__inertia_page__, 0) &&
+        !function_exported?(controller, :__inertia_pages__, 0)
+
+    cond do
+      function_exported?(controller, :inertia_shared_props, 0) ->
+        controller.inertia_shared_props()
+
+      is_page_module && function_exported?(controller, :__inertia_shared_inline__, 0) ->
+        controller.__inertia_shared_inline__() || []
+
+      true ->
+        []
+    end
   end
 
   defp generate_index(interfaces, output_dir) do
@@ -590,13 +584,6 @@ defmodule NbTs.Generator do
 
     index_path = Path.join(output_dir, "index.ts")
     File.write!(index_path, exports <> "\n")
-  end
-
-  defp component_name_to_page_interface(component_name) do
-    component_name
-    |> String.replace("/", "")
-    |> String.replace(" ", "")
-    |> Kernel.<>("Props")
   end
 
   defp generate_rpc_types(output_dir, verbose?) do

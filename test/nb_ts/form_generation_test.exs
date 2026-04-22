@@ -68,6 +68,28 @@ defmodule NbTs.FormGenerationTest do
       assert typescript =~ "email: string;"
     end
 
+    test "matching generic props inline their form input shape" do
+      page_config = %{
+        component: "Home",
+        props: [
+          %{name: :contact_form, type: :map, opts: [default: %{}]}
+        ],
+        forms: %{
+          contact_form: [
+            {:name, :string, []},
+            {:email, :string, []}
+          ]
+        }
+      }
+
+      typescript = Interface.generate_page_interface(:home, page_config, [], [])
+
+      assert typescript =~ ~r/contactForm:\s*\{/
+      assert typescript =~ "name: string;"
+      assert typescript =~ "email: string;"
+      refute typescript =~ "HomeFormInputs"
+    end
+
     test "generates optional fields with ? syntax" do
       defmodule OptionalFieldsController do
         def __inertia_pages__ do
